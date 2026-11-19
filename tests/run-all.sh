@@ -1,4 +1,6 @@
 #!/bin/bash
+# Started as "sh script", which may not be bash: start again with bash.
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 # Run every check whose needs are met, and say which were skipped and why.
 #
 #   tests/run-all.sh                  the quick checks
@@ -30,7 +32,7 @@ for arg in "$@"; do
         --containers) containers=true ;;
         --suites) containers=true; suites=true ;;
         --no-skip) no_skip=true ;;
-        -h|--help) sed -n '2,/^set -u/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '/^# Run every check/,/^set -u/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
         *) echo "run-all.sh: unknown option $arg (try --help)" >&2; exit 2 ;;
     esac
 done

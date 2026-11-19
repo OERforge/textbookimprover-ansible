@@ -1,4 +1,6 @@
 #!/bin/bash
+# Started as "sh script", which may not be bash: start again with bash.
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 # Run tests/scenario.sh in a fresh container of each image given, with Docker:
 #
 #   tests/run-scenarios.sh ubuntu:24.04 ubuntu:26.04 debian:13
