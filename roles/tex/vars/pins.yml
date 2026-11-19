@@ -1,0 +1,11 @@
+# The SHA-256 of each TinyTeX bundle for x86_64 (TinyTeX-linux-x86_64-<v>.tar.xz),
+# measured when it was added. TinyTeX publishes no checksum or signature of
+# its own. A version not here needs its SHA-256 in the inventory, as
+# ti_pins.tinytex, which can add a version but never replace one of these.
+tinytex_pins:
+  v2026.09: 9551e932ed74ea77a36b4bd3fb6d852f540c044037b083f77a8b15d4b97ca3fc
+
+# TeX Live's signing key, whose copy is files/texlive.asc. Its installer
+# changes every day, so it's checked against the key's signature, not a pin;
+# tlmgr checks everything after that against the same key.
+texlive_key_fingerprint: C78B82D8C79512F79CC0D7C80D5E5D9106BAB6BC

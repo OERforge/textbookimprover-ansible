@@ -1,0 +1,18 @@
+# Written by the tex role for TeX Live's installer.
+selected_scheme scheme-{{ texlive_scheme }}
+TEXDIR {{ texlive_dir }}
+TEXMFLOCAL {{ texlive_dir | dirname }}/texmf-local
+TEXMFSYSVAR {{ texlive_dir }}/texmf-var
+TEXMFSYSCONFIG {{ texlive_dir }}/texmf-config
+TEXMFHOME ~/texmf
+TEXMFVAR ~/.texlive{{ texlive_year }}/texmf-var
+TEXMFCONFIG ~/.texlive{{ texlive_year }}/texmf-config
+binary_x86_64-linux 1
+instopt_adjustpath 0
+instopt_adjustrepo 0
+instopt_letter 0
+instopt_portable 0
+instopt_write18_restricted 1
+tlpdbopt_autobackup 0
+tlpdbopt_install_docfiles {{ texlive_docs | bool | int }}
+tlpdbopt_install_srcfiles {{ texlive_source | bool | int }}

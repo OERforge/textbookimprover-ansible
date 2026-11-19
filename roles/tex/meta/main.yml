@@ -1,0 +1,7 @@
+galaxy_info:
+  author: TextbookImprover's contributors
+  description: TinyTeX or TeX Live in the user's home, with the packages a PDF target needs, every download checked.
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies:
+  - role: oerforge.textbookimprover.base

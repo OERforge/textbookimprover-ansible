@@ -1,0 +1,37 @@
+- name: Read the pinned checksums
+  ansible.builtin.include_vars: pins.yml
+
+- name: Stop on a TinyTeX with no pinned checksum
+  vars:
+    pins: "{{ (ti_pins.tinytex | default({})) | combine(tinytex_pins) }}"
+  ansible.builtin.assert:
+    that: tinytex_version in pins
+    fail_msg: >-
+      TinyTeX {{ tinytex_version }} has no SHA-256 here. Give one you trust in
+      the inventory, as ti_pins: {tinytex: {"{{ tinytex_version }}": <sha256>}}.
+    quiet: true
+
+- name: Download TinyTeX's bundle, refused unless its SHA-256 matches
+  vars:
+    pins: "{{ (ti_pins.tinytex | default({})) | combine(tinytex_pins) }}"
+  ansible.builtin.get_url:
+    url: "{{ tinytex_release_url }}/{{ tinytex_version }}/TinyTeX-linux-x86_64-{{ tinytex_version }}.tar.xz"
+    dest: "{{ ti_cache_dir }}/TinyTeX-linux-x86_64-{{ tinytex_version }}.tar.xz"
+    checksum: "sha256:{{ pins[tinytex_version] }}"
+    mode: "0644"
+
+- name: Unpack it as ~/.TinyTeX, unless there's one already
+  ansible.builtin.unarchive:
+    src: "{{ ti_cache_dir }}/TinyTeX-linux-x86_64-{{ tinytex_version }}.tar.xz"
+    dest: "{{ ti_home }}"
+    remote_src: true
+    creates: "{{ tex_tlmgr }}"
+
+- name: Look for the mark of a TinyTeX brought up to date
+  ansible.builtin.stat:
+    path: "{{ tex_marker }}"
+  register: tex_marked
+
+- name: Bring it up to date unless that's been done, or when asked
+  ansible.builtin.set_fact:
+    tex_update_now: "{{ tex_update | bool or not tex_marked.stat.exists }}"

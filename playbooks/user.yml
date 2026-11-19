@@ -16,4 +16,6 @@
     - oerforge.textbookimprover.base
     - oerforge.textbookimprover.python
     - oerforge.textbookimprover.pandoc
+    - role: oerforge.textbookimprover.tex
+      when: ti_tex | default(true) | bool
     - oerforge.textbookimprover.textbookimprover

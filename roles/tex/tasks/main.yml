@@ -1,0 +1,69 @@
+- name: Install the system packages a PDF target needs
+  tags: [system]
+  become: true
+  ansible.builtin.apt:
+    name: "{{ query('oerforge.textbookimprover.bindep', profiles=['pdf']) }}"
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+
+- name: Install TeX
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  vars:
+    tex_root: "{{ ti_home ~ '/.TinyTeX' if tex_distribution == 'tinytex' else texlive_dir }}"
+    tex_bin: "{{ tex_root }}/bin/x86_64-linux"
+    tex_tlmgr: "{{ tex_bin }}/tlmgr"
+    # Written once a TinyTeX has been brought up to date, or a TeX Live
+    # installed, so that a run that stopped partway finishes the job.
+    tex_marker: "{{ tex_root }}/.textbookimprover-ansible"
+  block:
+    - name: Stop on a TeX the role doesn't know
+      ansible.builtin.assert:
+        that: tex_distribution in ['tinytex', 'texlive']
+        fail_msg: tex_distribution is {{ tex_distribution }}; it can be tinytex or texlive.
+        quiet: true
+
+    - name: Install TinyTeX
+      ansible.builtin.import_tasks: tinytex.yml
+      when: tex_distribution == 'tinytex'
+
+    - name: Install TeX Live
+      ansible.builtin.import_tasks: texlive.yml
+      when: tex_distribution == 'texlive'
+
+    - name: Install the packages
+      ansible.builtin.import_tasks: packages.yml
+
+    - name: Put TeX's commands on the shell's PATH
+      ansible.builtin.blockinfile:
+        path: "{{ ti_shell_rc }}"
+        create: true
+        mode: "0644"
+        marker: "# {mark} textbookimprover-ansible: TeX"
+        block: |
+          case ":$PATH:" in
+            *":{{ tex_bin }}:"*) ;;
+            *) export PATH="{{ tex_bin }}:$PATH" ;;
+          esac
+
+    - name: Ask LuaLaTeX its LaTeX's release
+      ansible.builtin.command:
+        argv:
+          - "{{ tex_bin }}/lualatex"
+          - -interaction=nonstopmode
+          - '\message{TI-FORMAT=\fmtversion}\csname @@end\endcsname'
+        chdir: "{{ ti_cache_dir }}"
+      register: tex_format
+      changed_when: false
+
+    - name: Check that it's recent enough for a PDF target
+      vars:
+        found: "{{ (tex_format.stdout | regex_search('TI-FORMAT=([0-9-]+)', '\\1') or ['']) | first }}"
+      ansible.builtin.assert:
+        that: found is version(tex_latex_minimum, '>=', version_type='loose')
+        fail_msg: >-
+          LuaLaTeX's LaTeX is {{ found or 'unknown' }}; a PDF target needs
+          {{ tex_latex_minimum }} or later. Run again with -e tex_update=true.
+        success_msg: LaTeX {{ found }}

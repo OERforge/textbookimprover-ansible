@@ -1,0 +1,95 @@
+# Which TeX to install, in the user's home, so that tlmgr needs no sudo:
+#   tinytex  TinyTeX's bundle, a small TeX Live, with the installation page's
+#            packages added: what TextbookImprover's installation page tests,
+#            so a machine with it shows when that page's list leaves one out
+#   texlive  TeX Live from its own installer, every package in the scheme
+#            (full by default: several gigabytes; 17 minutes here without its
+#            documentation and sources, which the role leaves out)
+tex_distribution: tinytex
+
+# The repository tlmgr installs and updates from, set before anything is
+# fetched. Empty leaves TinyTeX's own choice (a mirror chosen for you), and
+# gives the TeX Live installer CTAN's mirror service. A network that allows
+# only named hosts needs a fixed mirror, such as
+# https://ctan.math.illinois.edu/systems/texlive/tlnet, and a dated snapshot
+# from texlive.info's tlnet-archive holds TeX still.
+tex_repository: ""
+
+# Bring every package up to date (tlmgr update --self --all) on this run. A
+# new TinyTeX is always brought up to date once; after that, only when asked,
+# so that a second run changes nothing.
+tex_update: false
+
+# The installation page's tlmgr install lines, whichever TeX: a full TeX Live
+# has them all already.
+tex_packages:
+  # The tagging code and what Pandoc's template loads, and the PDF target's
+  # faces and settings
+  - latex-lab
+  - tagpdf
+  - luamml
+  - luatexbase
+  - selnolig
+  - luacolor
+  - lua-ul
+  - footnotehyper
+  - xurl
+  - nameref
+  - multirow
+  - cancel
+  - pict2e
+  - placeins
+  - setspace
+  - geometry
+  - koma-script
+  - plex
+  - noto
+  - noto-emoji
+  - josefin
+  - junicodevf
+  # A LaTeX source's drawings and its tagging status
+  - luatex85
+  - preview
+  - epstopdf
+  - latex-tagging-status
+  # A deck's PDF
+  - ltx-talk
+  - lua-unicode-math
+  - newcomputermodern
+  # The LaTeX suite's small books
+  - amsfonts
+  - amsmath
+  - babel-english
+  - caption
+  - fancyhdr
+  - framed
+  - grfext
+  - mdframed
+  - pgf
+  - soul
+  - tabto-ltx
+  - tex-gyre
+  - titlesec
+  - tools
+  - ulem
+  - wasysym
+  - wrapfig
+
+# More packages: a language's babel- and hyphen- packages, say, or what a
+# book of your own loads.
+tex_extra_packages: []
+
+# The oldest LaTeX a PDF target builds with.
+tex_latex_minimum: "2026-06-01"
+
+# TinyTeX's release; its bundle's SHA-256 is pinned in vars/pins.yml.
+tinytex_version: v2026.09
+tinytex_release_url: https://github.com/rstudio/tinytex-releases/releases/download
+
+# TeX Live from its own installer: the release, which the installer's
+# version has to match, the scheme, and where it goes.
+texlive_year: "2026"
+texlive_scheme: full
+texlive_docs: false
+texlive_source: false
+texlive_dir: "{{ ti_opt_dir }}/texlive/{{ texlive_year }}"

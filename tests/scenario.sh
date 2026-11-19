@@ -83,7 +83,11 @@ play --tags user | tail -4
 
 say "what the user's shell has"
 as_tester bash -ic 'echo "T=$T"; command -v pandoc; pandoc --version | head -1;
-    git -C "$T" log -1 --format="%h %s"' 2>/dev/null
+    git -C "$T" log -1 --format="%h %s";
+    if command -v lualatex >/dev/null; then
+        command -v lualatex; lualatex --version | head -1
+    fi' 2>/dev/null
+grep -h -A4 "Check that it.s recent enough" /tmp/first.log | grep -o "LaTeX [0-9-]*" | head -1
 
 if [ -n "${TI_TEST_SUITES:-}" ]; then
     say "TextbookImprover's suites, as the user: ${TI_TEST_SUITES}"

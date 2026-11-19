@@ -1,0 +1,69 @@
+- name: Ask tlmgr which repository it uses
+  ansible.builtin.command:
+    argv: ["{{ tex_tlmgr }}", option, repository]
+  register: tex_repository_now
+  changed_when: false
+
+- name: Set the repository asked for
+  when: >-
+    tex_repository | length > 0
+    and not tex_repository_now.stdout.endswith(': ' ~ tex_repository)
+  ansible.builtin.command:
+    argv: ["{{ tex_tlmgr }}", option, repository, "{{ tex_repository }}"]
+  changed_when: true
+
+# tlmgr goes on without checking when gpg doesn't work, saying only "not
+# verified", so each step that fetches anything first asks it to read the
+# repository without changing anything, and stops unless it says "(verified)".
+- name: Bring every package up to date
+  when: tex_update_now | bool
+  block:
+    - name: Check that tlmgr can verify the repository, changing nothing
+      ansible.builtin.command:
+        argv: ["{{ tex_tlmgr }}", update, --list]
+      register: tex_check
+      changed_when: false
+      failed_when: &unverified >-
+        tex_check.rc != 0 or '(verified)' not in tex_check.stdout
+        or 'not verified' in tex_check.stdout
+
+    - name: Update tlmgr and every package
+      ansible.builtin.command:
+        argv: ["{{ tex_tlmgr }}", update, --self, --all]
+      register: tex_updated
+      changed_when: "'update:' in tex_updated.stdout"
+
+    - name: Mark it brought up to date
+      ansible.builtin.copy:
+        content: "Brought up to date by textbookimprover-ansible's tex role.\n"
+        dest: "{{ tex_marker }}"
+        mode: "0644"
+
+- name: List the packages installed, which needs no network
+  ansible.builtin.command:
+    argv: ["{{ tex_tlmgr }}", info, --only-installed, --data, name]
+  register: tex_installed_packages
+  changed_when: false
+
+- name: Install the packages not there yet
+  vars:
+    tex_missing: "{{ (tex_packages + tex_extra_packages) | unique | difference(tex_installed_packages.stdout_lines) }}"
+  when: tex_missing | length > 0
+  block:
+    - name: Check that tlmgr can verify the repository, changing nothing
+      ansible.builtin.command:
+        argv: ["{{ tex_tlmgr }}", update, --list]
+      register: tex_check
+      changed_when: false
+      failed_when: *unverified
+
+    - name: Bring tlmgr itself up to date, which it needs before it installs
+      ansible.builtin.command:
+        argv: ["{{ tex_tlmgr }}", update, --self]
+      register: tex_updated
+      changed_when: "'update:' in tex_updated.stdout"
+
+    - name: Install them
+      ansible.builtin.command:
+        argv: "{{ [tex_tlmgr, 'install'] + tex_missing }}"
+      changed_when: true

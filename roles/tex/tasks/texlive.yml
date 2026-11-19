@@ -1,0 +1,153 @@
+- name: Read the key's fingerprint
+  ansible.builtin.include_vars: pins.yml
+
+- name: Look for the mark of a TeX Live installed
+  ansible.builtin.stat:
+    path: "{{ tex_marker }}"
+  register: tex_marked
+
+- name: Look for TeX Live's tlmgr
+  ansible.builtin.stat:
+    path: "{{ tex_tlmgr }}"
+  register: tex_installed
+
+- name: Stop on a TeX Live there already that this role didn't finish installing
+  ansible.builtin.assert:
+    that: tex_marked.stat.exists or not tex_installed.stat.exists
+    fail_msg: >-
+      {{ texlive_dir }} holds a TeX Live this role didn't finish installing,
+      or didn't install. Remove that folder and run again, or set
+      texlive_dir to another.
+    quiet: true
+
+- name: Install TeX Live from its own installer
+  when: not tex_marked.stat.exists
+  vars:
+    work: "{{ ti_cache_dir }}/texlive-installer"
+    repository: "{{ tex_repository or 'https://mirror.ctan.org/systems/texlive/tlnet' }}"
+  environment:
+    # gpg's own folder, so that the user's keyring is never read or changed
+    GNUPGHOME: "{{ ti_cache_dir }}/texlive-installer/gnupg"
+  block:
+    - name: Start with an empty folder for the installer
+      ansible.builtin.file:
+        path: "{{ work }}"
+        state: absent
+
+    - name: Make the folder, and gpg's
+      ansible.builtin.file:
+        path: "{{ work }}/gnupg"
+        state: directory
+        mode: "0700"
+
+    - name: Download the installer, its checksum, and the checksum's signature
+      ansible.builtin.get_url:
+        url: "{{ repository }}/{{ item }}"
+        dest: "{{ work }}/{{ item }}"
+        mode: "0644"
+      loop:
+        - install-tl-unx.tar.gz
+        - install-tl-unx.tar.gz.sha512
+        - install-tl-unx.tar.gz.sha512.asc
+
+    - name: Copy TeX Live's key
+      ansible.builtin.copy:
+        src: texlive.asc
+        dest: "{{ work }}/texlive.asc"
+        mode: "0644"
+
+    - name: Read the key's fingerprint
+      ansible.builtin.command:
+        argv: [gpg, --show-keys, --with-colons, "{{ work }}/texlive.asc"]
+      register: tex_key
+      changed_when: false
+
+    - name: Check that the key is TeX Live's
+      ansible.builtin.assert:
+        that: ('fpr:::::::::' ~ texlive_key_fingerprint ~ ':') in tex_key.stdout_lines
+        fail_msg: The key in files/texlive.asc isn't TeX Live's ({{ texlive_key_fingerprint }}).
+        quiet: true
+
+    - name: Make a keyring of it alone
+      ansible.builtin.command:
+        argv: [gpg, --dearmor, --output, "{{ work }}/texlive.gpg", "{{ work }}/texlive.asc"]
+        creates: "{{ work }}/texlive.gpg"
+
+    - name: Check the checksum's signature
+      ansible.builtin.command:
+        argv:
+          - gpgv
+          - --keyring
+          - "{{ work }}/texlive.gpg"
+          - "{{ work }}/install-tl-unx.tar.gz.sha512.asc"
+          - "{{ work }}/install-tl-unx.tar.gz.sha512"
+      changed_when: false
+
+    - name: Check the installer against the checksum
+      ansible.builtin.command:
+        argv: [sha512sum, --check, --strict, install-tl-unx.tar.gz.sha512]
+        chdir: "{{ work }}"
+      changed_when: false
+
+    - name: Unpack the installer
+      ansible.builtin.unarchive:
+        src: "{{ work }}/install-tl-unx.tar.gz"
+        dest: "{{ work }}"
+        remote_src: true
+
+    - name: Find it
+      ansible.builtin.find:
+        paths: "{{ work }}"
+        patterns: install-tl-2*
+        file_type: directory
+      register: tex_installer
+
+    - name: Ask it which release it installs
+      ansible.builtin.command:
+        argv: [perl, "{{ tex_installer.files[0].path }}/install-tl", --version]
+      register: tex_installer_version
+      changed_when: false
+
+    - name: Check that it's the release asked for
+      ansible.builtin.assert:
+        that: ('version ' ~ texlive_year) in tex_installer_version.stdout
+        fail_msg: >-
+          The installer installs {{ tex_installer_version.stdout_lines | last }},
+          not {{ texlive_year }}. Set texlive_year to match it.
+        quiet: true
+
+    - name: Write the installer's profile
+      ansible.builtin.template:
+        src: texlive.profile.j2
+        dest: "{{ work }}/texlive.profile"
+        mode: "0644"
+
+    - name: Install TeX Live, every package checked against TeX Live's signature
+      ansible.builtin.command:
+        argv:
+          - perl
+          - "{{ tex_installer.files[0].path }}/install-tl"
+          - -profile
+          - "{{ work }}/texlive.profile"
+          - -repository
+          - "{{ repository }}"
+      register: tex_install
+      failed_when: >-
+        tex_install.rc != 0 or '(verified)' not in tex_install.stdout
+        or 'not verified' in tex_install.stdout
+      changed_when: true
+
+    - name: Mark it installed
+      ansible.builtin.copy:
+        content: "Installed by textbookimprover-ansible's tex role.\n"
+        dest: "{{ tex_marker }}"
+        mode: "0644"
+
+    - name: Remove the installer
+      ansible.builtin.file:
+        path: "{{ work }}"
+        state: absent
+
+- name: Bring TeX Live up to date only when asked
+  ansible.builtin.set_fact:
+    tex_update_now: "{{ tex_update | bool }}"
