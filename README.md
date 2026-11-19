@@ -46,11 +46,19 @@ A release the collection has no checksum or commit for stops the play, which nam
 
 ## Testing
 
-`tests/run-scenarios.sh` runs `tests/scenario.sh` in a fresh container of each image it's given, with Docker: it installs `ansible-core` from `apt`, makes an ordinary user with `sudo`, runs the playbook as that user, runs it again to check that nothing changes, and runs the user step with `sudo` taken away.
+`tests/run-all.sh` runs every check whose needs are met and says which it skipped and why; `--help` lists its options.
 
 ```bash
-tests/run-scenarios.sh ubuntu:24.04 ubuntu:26.04
-TI_TEST_SUITES=all tests/run-scenarios.sh ubuntu:24.04
+tests/run-all.sh                 # the quick checks
+tests/run-all.sh --containers    # and the playbook in fresh containers
+tests/run-all.sh --suites        # and TextbookImprover's suites in each
 ```
 
-The second runs TextbookImprover's suites as the user afterward. `ansible-lint` passes at its `production` profile; `.ansible-lint` says why one rule is skipped. `tests/unit/test_bindep.py` holds the lookup plugin to bindep's own answers, and `scenario.sh` runs it on each host when `TI_TEST_BINDEP` names a folder holding bindep. `tests/check-secrets.py` fails if anything git tracks looks like a key, a vault password, an inventory, or a password or token in plain text, and if `.gitignore` or `galaxy.yml`'s `build_ignore` lets any such name through; it needs only Python and git, so it's worth running before each commit. `notes/PLATFORMS.md` has what's known about each distribution, and how each fact is known.
+The checks, and what each needs:
+
+- **`tests/check-secrets.py`** (Python and git) fails if anything git tracks looks like a key, a vault password, an inventory, or a password or token in plain text, and if `.gitignore` or `galaxy.yml`'s `build_ignore` lets any such name through. It's quick enough to run before each commit.
+- **`tests/unit/test_bindep.py`** (bindep importable, or a folder holding it named by `TI_TEST_BINDEP`) holds the lookup plugin to bindep's own answers.
+- **`ansible-lint`**, which passes at its `production` profile; `.ansible-lint` says why one rule is skipped.
+- **`tests/run-scenarios.sh`** (Docker and the network) runs `tests/scenario.sh` in a fresh container of each image in `TI_TEST_IMAGES` (Ubuntu 24.04 and 26.04 if unset): it installs `ansible-core` from `apt`, makes an ordinary user with `sudo`, runs the playbook as that user, runs it again to check that nothing changes, and runs the user step with `sudo` taken away. With `--suites` it then runs TextbookImprover's suites as that user, and with `TI_TEST_BINDEP` set it runs the bindep check on each host too.
+
+`--no-skip` makes a check that can't run a failure. `notes/PLATFORMS.md` has what's known about each distribution, and how each fact is known.
