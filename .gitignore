@@ -4,3 +4,32 @@ __pycache__/
 
 # Ansible's retry files
 *.retry
+
+# Secrets, kept out in case one is copied into a clone: keys, vault passwords,
+# tokens, and inventories, which hold hosts and their passwords. The collection
+# ships no inventory. tests/check-secrets.py checks that galaxy.yml's
+# build_ignore has these too, since ansible-galaxy doesn't read this file.
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+*.pem
+*.key
+*.p12
+*.pfx
+.vault_pass*
+vault_pass*
+.vault-password*
+*.vault-password
+.env
+.env.*
+*.token
+inventory
+inventory.*
+inventories/
+hosts
+hosts.yml
+hosts.yaml
+hosts.ini
+host_vars/
+group_vars/
