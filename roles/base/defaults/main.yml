@@ -1,0 +1,23 @@
+# The person the tools are installed for, and their home folder: the person
+# running the play unless the inventory says otherwise.
+ti_user: "{{ ansible_facts['user_id'] }}"
+ti_home: "{{ ansible_facts['user_dir'] }}"
+
+# Where downloads are kept once checked, where tools are unpacked, and the
+# folder their commands are linked into, which the shell's PATH puts first.
+ti_cache_dir: "{{ ti_home }}/.cache/textbookimprover-ansible"
+ti_opt_dir: "{{ ti_home }}/.local/opt"
+ti_bin_dir: "{{ ti_home }}/.local/bin"
+
+# The shell startup file the user step adds its lines to.
+ti_shell_rc: "{{ ti_home }}/.bashrc"
+
+# Platforms the collection is tested on. A play elsewhere stops at once,
+# unless this is true.
+ti_allow_unsupported: false
+ti_supported_platforms:
+  - Ubuntu 24.04
+  - Ubuntu 26.04
+  - Debian 13
+ti_supported_architectures:
+  - x86_64

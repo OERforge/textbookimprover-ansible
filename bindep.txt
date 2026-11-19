@@ -1,0 +1,61 @@
+# What TextbookImprover needs from the system's package manager, in bindep's
+# format (https://docs.opendev.org/opendev/bindep/latest/readme.html), read by
+# this collection's lookup plugin, oerforge.textbookimprover.bindep.
+#
+# Profiles: default (converting a book), pdf, validators, browser, slides,
+# test. Pandoc, TinyTeX, epubcheck, the Nu checker, and veraPDF come from
+# their own projects, not from a package manager, so they aren't here.
+#
+# The RPM lines are from package indexes and haven't been installed; the Red
+# Hat family isn't supported yet (notes/PLATFORMS.md).
+
+# Tools the roles use, which a minimal image lacks
+ca-certificates
+curl
+file
+fontconfig
+git
+gpg
+perl
+tar
+unzip
+xz-utils
+zip
+
+# Python packages. pypdf has no RPM in EPEL, and EPEL 9's pikepdf is too old:
+# on Red Hat systems those two would come from pip.
+python3-yaml [platform:dpkg]
+python3-pyyaml [platform:rpm]
+python3-html5lib
+python3-lxml
+python3-pypdf [platform:dpkg]
+python3-pil [platform:dpkg]
+python3-pillow [platform:rpm]
+
+# A pdf target
+librsvg2-bin [platform:dpkg pdf]
+librsvg2-tools [platform:rpm pdf]
+poppler-utils [pdf]
+ghostscript [pdf]
+fonts-dejavu-core [platform:dpkg pdf]
+dejavu-sans-fonts [platform:rpm pdf]
+fonts-noto-core [platform:dpkg pdf]
+google-noto-sans-fonts [platform:rpm pdf]
+python3-pikepdf [platform:dpkg pdf]
+
+# The Java validators: Java 21, since Debian 13 has no Java 17
+openjdk-21-jre-headless [platform:dpkg validators]
+java-21-openjdk-headless [platform:rpm validators]
+
+# --wcag's browser, in a virtual environment, and Ace's Node where the
+# distribution's is 20 or later (Ubuntu 24.04's is 18)
+python3-venv [platform:dpkg browser]
+nodejs [browser platform:ubuntu-26.04 platform:debian-13]
+npm [browser platform:ubuntu-26.04 platform:debian-13]
+
+# Decks saved as ODP or PowerPoint 97-2003
+libreoffice-impress [slides]
+
+# The test suites only
+python3-fonttools [test]
+python3-docx [platform:dpkg test]

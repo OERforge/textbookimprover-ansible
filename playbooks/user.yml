@@ -1,0 +1,19 @@
+# Set up a machine for converting books with TextbookImprover. Run it on the
+# machine itself:
+#
+#   ansible-playbook -i localhost, -c local -K oerforge.textbookimprover.user
+#
+# -K asks for the sudo password, which only the system packages need; with
+# --tags user, nothing needs it.
+- name: Set up TextbookImprover for converting books
+  hosts: all
+  gather_facts: true
+  vars:
+    # The system's own Python, named so that ansible-core doesn't have to
+    # guess, and warn that it guessed.
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - oerforge.textbookimprover.base
+    - oerforge.textbookimprover.python
+    - oerforge.textbookimprover.pandoc
+    - oerforge.textbookimprover.textbookimprover

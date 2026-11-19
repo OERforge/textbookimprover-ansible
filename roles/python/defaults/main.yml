@@ -1,0 +1,7 @@
+# The Python TextbookImprover runs with, and the oldest it takes.
+ti_python: /usr/bin/python3
+ti_python_minimum: "3.9"
+
+# The modules a run imports, which base installs from apt (bindep.txt's
+# default profile), each checked here.
+ti_python_modules: [yaml, html5lib, lxml, pypdf, PIL]

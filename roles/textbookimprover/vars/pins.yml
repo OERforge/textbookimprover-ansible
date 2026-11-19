@@ -1,0 +1,8 @@
+# The commit each release's tag names, measured when it was added. The tags
+# are lightweight and unsigned, so the commit is what fixes a release's files.
+# A release not here needs its commit in the inventory, as
+# ti_pins.textbookimprover, which can add a release but never replace one of
+# these.
+textbookimprover_pins:
+  "0.10": 401e1d9bfafe91fba679319ee274a28d5d33f7c2
+  "0.9": 1336703fd0cfd3eeeba81cee5c4b1e96c97fe3f8

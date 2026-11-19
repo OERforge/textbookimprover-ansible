@@ -1,0 +1,40 @@
+- name: Check the platform
+  ansible.builtin.import_tasks: platform.yml
+  tags: [always]
+
+- name: Install the system packages every profile needs
+  tags: [system]
+  become: true
+  ansible.builtin.apt:
+    name: "{{ query('oerforge.textbookimprover.bindep', profiles=['default']) }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+
+- name: Set up the user's folders and shell
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  block:
+    - name: Make the folders for downloads, tools, and their commands
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ ti_cache_dir }}"
+        - "{{ ti_opt_dir }}"
+        - "{{ ti_bin_dir }}"
+
+    - name: Put the folder of commands first on the shell's PATH
+      ansible.builtin.blockinfile:
+        path: "{{ ti_shell_rc }}"
+        create: true
+        mode: "0644"
+        marker: "# {mark} textbookimprover-ansible: PATH"
+        block: |
+          case ":$PATH:" in
+            *":{{ ti_bin_dir }}:"*) ;;
+            *) export PATH="{{ ti_bin_dir }}:$PATH" ;;
+          esac

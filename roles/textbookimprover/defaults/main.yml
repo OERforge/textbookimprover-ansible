@@ -1,0 +1,19 @@
+# release: a clone at a release's tag, its commit checked against the one
+# pinned for that release. git: a clone of a branch, tag, or commit
+# (a commit given in full is checked too).
+ti_source: release
+
+# The release (without its "v") for ti_source: release, or the branch, tag,
+# or commit for ti_source: git.
+ti_version: "{{ '0.10' if ti_source == 'release' else 'main' }}"
+
+# Where it goes: the installation page's folders by default.
+ti_dir: >-
+  {{ ti_home }}/tools/textbookimprover{{
+  '-' ~ ti_version if ti_source == 'release' else '' }}
+
+ti_repository: https://github.com/OERforge/textbookimprover.git
+
+# For ti_source: git, whether a play updates the clone to ti_version. A clone
+# with changes of its own isn't touched either way: the play stops instead.
+ti_update_clone: true

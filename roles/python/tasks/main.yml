@@ -1,0 +1,35 @@
+- name: Check the Python and its packages
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  block:
+    - name: Ask the Python for its version and whether each package imports
+      vars:
+        probe: |
+          import importlib, json, platform, sys
+          found = {}
+          for name in sys.argv[1:]:
+              try:
+                  module = importlib.import_module(name)
+                  found[name] = str(getattr(module, "__version__", "present"))
+              except ImportError:
+                  found[name] = None
+          print(json.dumps({"python": platform.python_version(), "modules": found}))
+      ansible.builtin.command:
+        argv: "{{ [ti_python, '-c', probe] + ti_python_modules }}"
+      register: ti_python_found
+      changed_when: false
+
+    - name: Stop if the Python is too old or a package is missing
+      vars:
+        found: "{{ ti_python_found.stdout | from_json }}"
+        missing: "{{ found.modules | dict2items | selectattr('value', 'none') | map(attribute='key') | list }}"
+      ansible.builtin.assert:
+        that:
+          - found.python is version(ti_python_minimum, '>=')
+          - missing | length == 0
+        fail_msg: >-
+          {{ ti_python }} is Python {{ found.python }}
+          (TextbookImprover needs {{ ti_python_minimum }} or later){{
+          '; missing: ' ~ (missing | join(', ')) if missing else '' }}.
+        success_msg: "Python {{ found.python }}, with {{ found.modules | dict2items | map(attribute='key') | join(', ') }}"

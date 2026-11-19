@@ -1,0 +1,5 @@
+# The collection's variables share one prefix, ti_, rather than each role's
+# name, because several roles read the same ones (ti_user, ti_home, ti_pins,
+# and the folders base sets).
+skip_list:
+  - var-naming[no-role-prefix]

@@ -1,0 +1,20 @@
+- name: Name the platform as the supported list names it
+  ansible.builtin.set_fact:
+    ti_platform: >-
+      {{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version']
+         if ansible_facts['distribution'] == 'Ubuntu'
+         else ansible_facts['distribution_major_version'] }}
+
+- name: Stop on a platform the collection isn't tested on
+  ansible.builtin.assert:
+    that:
+      - ti_platform in ti_supported_platforms
+      - ansible_facts['architecture'] in ti_supported_architectures
+    fail_msg: >-
+      {{ ti_platform }} on {{ ansible_facts['architecture'] }} isn't supported.
+      Supported: {{ ti_supported_platforms | join(', ') }}, on
+      {{ ti_supported_architectures | join(', ') }}. To try anyway, run with
+      -e ti_allow_unsupported=true.
+    quiet: true
+  when: not ti_allow_unsupported | bool

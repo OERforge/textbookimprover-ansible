@@ -1,0 +1,63 @@
+- name: Install TextbookImprover
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  vars:
+    pins: "{{ (ti_pins.textbookimprover | default({})) | combine(textbookimprover_pins) }}"
+    release: "{{ ti_source == 'release' }}"
+    full_commit: "{{ ti_version is match('^[0-9a-f]{40}$') }}"
+  block:
+    - name: Read the pinned commits
+      ansible.builtin.include_vars: pins.yml
+
+    - name: Stop on a source this role doesn't know
+      ansible.builtin.assert:
+        that: ti_source in ['release', 'git']
+        fail_msg: "ti_source is {{ ti_source }}; it's release or git."
+        quiet: true
+
+    - name: Stop on a release with no pinned commit
+      ansible.builtin.assert:
+        that: (ti_version | string) in pins
+        fail_msg: >-
+          TextbookImprover {{ ti_version }} has no pinned commit here. Give the
+          commit its tag should name in the inventory, as
+          ti_pins: {textbookimprover: {"{{ ti_version }}": <commit>}}.
+        quiet: true
+      when: release
+
+    - name: Clone it at the release's tag, or at the ref asked for
+      ansible.builtin.git:
+        repo: "{{ ti_repository }}"
+        dest: "{{ ti_dir | trim }}"
+        version: "{{ 'v' ~ ti_version if release else ti_version }}"
+        depth: "{{ 1 if release else omit }}"
+        update: "{{ true if release else ti_update_clone }}"
+        force: false
+      register: ti_clone
+
+    - name: Check that the release's tag names its pinned commit
+      ansible.builtin.assert:
+        that: ti_clone.after == pins[ti_version | string]
+        fail_msg: >-
+          v{{ ti_version }} names {{ ti_clone.after }}, where the pinned commit
+          is {{ pins[ti_version | string] }}. The tag has moved, or this isn't
+          TextbookImprover's repository; nothing in {{ ti_dir | trim }} should
+          be used.
+        success_msg: "TextbookImprover {{ ti_version }} at {{ ti_clone.after }}"
+      when: release
+
+    - name: Check that a commit asked for in full is the one checked out
+      ansible.builtin.assert:
+        that: ti_clone.after == ti_version
+        fail_msg: "{{ ti_dir | trim }} is at {{ ti_clone.after }}, not {{ ti_version }}."
+      when: not release and full_commit
+
+    - name: Set T to it in the shell
+      ansible.builtin.blockinfile:
+        path: "{{ ti_shell_rc }}"
+        create: true
+        mode: "0644"
+        marker: "# {mark} textbookimprover-ansible: T"
+        block: |
+          export T="{{ ti_dir | trim }}"

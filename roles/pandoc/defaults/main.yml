@@ -1,0 +1,7 @@
+# The Pandoc releases to install. The first is linked as `pandoc`; every one
+# is linked as `pandoc-<version>` too.
+pandoc_versions:
+  - "3.14"
+
+# Where Pandoc's releases are published; each tarball's name follows it.
+pandoc_release_url: https://github.com/jgm/pandoc/releases/download

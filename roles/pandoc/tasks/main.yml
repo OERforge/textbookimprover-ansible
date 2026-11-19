@@ -1,0 +1,59 @@
+- name: Install Pandoc's releases
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  vars:
+    pins: "{{ (ti_pins.pandoc | default({})) | combine(pandoc_pins) }}"
+  block:
+    - name: Read the pinned checksums
+      ansible.builtin.include_vars: pins.yml
+
+    - name: Stop on a version with no pinned checksum
+      ansible.builtin.assert:
+        that: (item | string) in pins
+        fail_msg: >-
+          Pandoc {{ item }} has no SHA-256 here. Give one you trust in the
+          inventory, as ti_pins: {pandoc: {"{{ item }}": <sha256>}}.
+        quiet: true
+      loop: "{{ pandoc_versions }}"
+
+    - name: Download each release, refused unless its SHA-256 matches
+      ansible.builtin.get_url:
+        url: "{{ pandoc_release_url }}/{{ item }}/pandoc-{{ item }}-linux-amd64.tar.gz"
+        dest: "{{ ti_cache_dir }}/pandoc-{{ item }}-linux-amd64.tar.gz"
+        checksum: "sha256:{{ pins[item | string] }}"
+        mode: "0644"
+      loop: "{{ pandoc_versions }}"
+
+    - name: Unpack each release into its own folder
+      ansible.builtin.unarchive:
+        src: "{{ ti_cache_dir }}/pandoc-{{ item }}-linux-amd64.tar.gz"
+        dest: "{{ ti_opt_dir }}"
+        remote_src: true
+        creates: "{{ ti_opt_dir }}/pandoc-{{ item }}/bin/pandoc"
+      loop: "{{ pandoc_versions }}"
+
+    - name: Link each as pandoc-<version>
+      ansible.builtin.file:
+        src: "{{ ti_opt_dir }}/pandoc-{{ item }}/bin/pandoc"
+        dest: "{{ ti_bin_dir }}/pandoc-{{ item }}"
+        state: link
+      loop: "{{ pandoc_versions }}"
+
+    - name: Link the first as pandoc
+      ansible.builtin.file:
+        src: "{{ ti_opt_dir }}/pandoc-{{ pandoc_versions[0] }}/bin/pandoc"
+        dest: "{{ ti_bin_dir }}/pandoc"
+        state: link
+
+    - name: Ask the linked Pandoc its version
+      ansible.builtin.command:
+        argv: ["{{ ti_bin_dir }}/pandoc", --version]
+      register: ti_pandoc_version
+      changed_when: false
+
+    - name: Check that it's the version asked for
+      ansible.builtin.assert:
+        that: ti_pandoc_version.stdout_lines[0] == 'pandoc ' ~ pandoc_versions[0]
+        fail_msg: "{{ ti_bin_dir }}/pandoc says {{ ti_pandoc_version.stdout_lines[0] }}"
+        success_msg: "{{ ti_pandoc_version.stdout_lines[0] }}"

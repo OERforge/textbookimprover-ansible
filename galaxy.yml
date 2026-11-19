@@ -1,0 +1,21 @@
+namespace: oerforge
+name: textbookimprover
+version: 0.1.0
+readme: README.md
+authors:
+  - TextbookImprover's contributors
+description: Sets up a machine to use or develop TextbookImprover, following its installation page.
+license:
+  - MIT
+tags:
+  - tools
+  - linux
+  - textbookimprover
+  - accessibility
+  - pandoc
+  - oer
+repository: https://github.com/OERforge/textbookimprover-ansible
+issues: https://github.com/OERforge/textbookimprover-ansible/issues
+build_ignore:
+  - tests
+  - "*.mbox"

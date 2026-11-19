@@ -1,0 +1,8 @@
+# The SHA-256 of each release's tarball for x86_64, measured when it was
+# added. Pandoc publishes no checksum or signature of its own. A version not
+# here needs its SHA-256 in the inventory, as ti_pins.pandoc, which can add a
+# version but never replace one of these.
+pandoc_pins:
+  "3.14": c5f4720cdefb3f7bdc5d07202ef579feef0d1370773c873804dd8fdaa8c4f1b8
+  "3.13": 38aa33b325a2bc96a4c39409631212db55702f564250bcdbead180b3bf646389
+  "3.12.1": d0c90410e90204c9ca83b8539fac5c7aed01fd537207e4585849f8abc5df20b8
