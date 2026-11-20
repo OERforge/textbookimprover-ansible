@@ -1,0 +1,10 @@
+# The SHA-256 of each download, and the commit of each clone, measured when
+# it was added.
+
+# uv's tarball for x86_64 Linux, matching the .sha256 uv publishes beside it.
+uv_pins:
+  "0.13.9": a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5
+
+# The commit of openstax/cookbook that TextbookImprover's ports were made
+# from, and are compared with.
+cookbook_commit: f5b488f0ad2d48bb1b49b990dd249e9869d0b256

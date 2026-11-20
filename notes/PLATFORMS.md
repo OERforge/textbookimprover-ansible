@@ -44,6 +44,16 @@ Measured 2026-11-20 with Playwright 1.65.2 and its headless Chromium 159.0.8154.
 - **Playwright's platform names**: `ubuntu24.04-x64`, `ubuntu26.04-x64`, and `debian13-x64`, each officially supported by 1.65.2. Its lists of packages for the headless Chromium are the same on the three, but that Debian's has no `xfonts-cyrillic`; `bindep.txt` has them, less Xvfb, which only a browser with a window uses.
 - **Chromium's sandbox**: in a container under Docker's default seccomp profile, neither Chromium's sandbox nor the check's own namespaces start ("unshare: Operation not permitted"), and `--wcag` says so and goes on; with `--security-opt seccomp=unconfined --security-opt apparmor=unconfined`, on 24.04, both started. Not yet tried on a machine running Ubuntu itself, where AppArmor restricts unprivileged user namespaces.
 
+## The developer playbook, on all three
+
+Measured 2026-11-20 in containers of each release.
+
+- **LibreOffice** from `apt`'s `libreoffice-impress`: 24.2.7.2 on Ubuntu 24.04, 26.2.6.3 on 26.04, and 25.2.3.2 on Debian 13.
+- **fontTools and python-docx** from `apt` on all three, under their `python3-` names.
+- **Python 3.9.25** from uv 0.13.9, the same build on all three, since uv brings its own.
+- **TeX Live's mirror**: CTAN's mirror service (`mirror.ctan.org`) sends each request to a mirror near the asker, a different one from one request to the next, so a network that allows only named hosts needs `tex_repository` set to one it allows.
+- **TextbookImprover's suites** at `main` (459273a) on 26.04 with the full TeX Live: all passed, with one skip, `setpriv` as root, which only a run as root can check.
+
 ## The Red Hat family, later
 
 Read, not installed, except where it says so.

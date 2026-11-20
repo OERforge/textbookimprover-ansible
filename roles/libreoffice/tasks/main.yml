@@ -1,0 +1,24 @@
+- name: Install LibreOffice Impress
+  tags: [system]
+  become: true
+  ansible.builtin.apt:
+    name: "{{ query('oerforge.textbookimprover.bindep', profiles=['slides']) }}"
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+
+- name: Ask LibreOffice its version
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  ansible.builtin.command:
+    argv: [soffice, --version]
+  register: libreoffice_said
+  changed_when: false
+
+- name: Check that it answered
+  tags: [user]
+  ansible.builtin.assert:
+    that: libreoffice_said.stdout is match('LibreOffice ')
+    fail_msg: "soffice --version said {{ libreoffice_said.stdout | truncate(200) }}"
+    success_msg: "{{ libreoffice_said.stdout_lines | first }}"

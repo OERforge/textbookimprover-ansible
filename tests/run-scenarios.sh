@@ -16,7 +16,7 @@ for image in "$@"; do
     printf '\n######## %s\n' "$image"
     mounts=(-v "$here:/collection:ro")
     envs=()
-    for name in TI_TEST_CA TI_TEST_SOURCES TI_TEST_BINDEP TI_TEST_SUITES TI_TEST_EXTRA TI_TEST_PROXY; do
+    for name in TI_TEST_CA TI_TEST_SOURCES TI_TEST_BINDEP TI_TEST_SUITES TI_TEST_EXTRA TI_TEST_PROXY TI_TEST_PLAYBOOK; do
         value=${!name:-}
         [ -n "$value" ] || continue
         envs+=(-e "$name=$value")

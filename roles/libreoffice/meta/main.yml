@@ -1,0 +1,7 @@
+galaxy_info:
+  author: TextbookImprover's contributors
+  description: LibreOffice Impress, which TextbookImprover uses to read decks saved as ODP or PowerPoint 97-2003, and to save a deck as PowerPoint.
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies:
+  - role: oerforge.textbookimprover.base

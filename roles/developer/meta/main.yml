@@ -1,0 +1,7 @@
+galaxy_info:
+  author: TextbookImprover's contributors
+  description: What TextbookImprover's test suites need beyond converting books - their packages, Python 3.9, and OpenStax's cookbook.
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies:
+  - role: oerforge.textbookimprover.base

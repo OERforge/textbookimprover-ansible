@@ -22,4 +22,6 @@
       when: ti_validators | default(true) | bool
     - role: oerforge.textbookimprover.browser_checks
       when: ti_browser_checks | default(true) | bool
+    - role: oerforge.textbookimprover.libreoffice
+      when: ti_libreoffice | default(false) | bool
     - oerforge.textbookimprover.textbookimprover

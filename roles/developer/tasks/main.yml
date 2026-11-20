@@ -1,0 +1,112 @@
+- name: Install the test suites' Python packages
+  tags: [system]
+  become: true
+  ansible.builtin.apt:
+    name: "{{ query('oerforge.textbookimprover.bindep', profiles=['test']) }}"
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+
+- name: Install what working on TextbookImprover needs
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  vars:
+    pins_uv: "{{ (ti_pins.uv | default({})) | combine(uv_pins) }}"
+    uv_dir: "{{ ti_opt_dir }}/uv-{{ uv_version }}"
+    uv_env:
+      # uv's own folders, so that a uv of the person's own, its settings, and
+      # its Pythons are left alone
+      UV_NO_CONFIG: "1"
+      UV_CACHE_DIR: "{{ ti_cache_dir }}/uv"
+      UV_PYTHON_INSTALL_DIR: "{{ ti_opt_dir }}/uv-python"
+      UV_PYTHON_BIN_DIR: "{{ ti_bin_dir }}"
+  block:
+    - name: Read the pinned checksums and commits
+      ansible.builtin.include_vars: pins.yml
+
+    - name: Install Python 3.9
+      when: developer_python39 | bool
+      block:
+        - name: Stop on a uv with no pinned checksum
+          ansible.builtin.assert:
+            that: uv_version in pins_uv
+            fail_msg: >-
+              uv {{ uv_version }} has no pinned checksum here. Give one you trust in
+              the inventory, as ti_pins: {uv: {"{{ uv_version }}": <sha256>}}.
+            quiet: true
+
+        - name: Download uv, refused unless its SHA-256 matches
+          ansible.builtin.get_url:
+            url: "{{ uv_release_url }}/{{ uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+            dest: "{{ ti_cache_dir }}/uv-{{ uv_version }}-x86_64-unknown-linux-gnu.tar.gz"
+            checksum: "sha256:{{ pins_uv[uv_version] }}"
+            mode: "0644"
+
+        - name: Make uv's folder
+          ansible.builtin.file:
+            path: "{{ uv_dir }}"
+            state: directory
+            mode: "0755"
+
+        - name: Unpack uv
+          ansible.builtin.unarchive:
+            src: "{{ ti_cache_dir }}/uv-{{ uv_version }}-x86_64-unknown-linux-gnu.tar.gz"
+            dest: "{{ uv_dir }}"
+            remote_src: true
+            extra_opts: [--strip-components=1]
+            creates: "{{ uv_dir }}/uv"
+
+        # uv checks each build it downloads against the SHA-256 in its own
+        # table, so the pinned uv decides which 3.9 comes and what it must be.
+        - name: Install Python 3.9 with it, linked as python3.9, at {{ developer_python39_version }}
+          ansible.builtin.command:
+            argv:
+              - "{{ uv_dir }}/uv"
+              - python
+              - install
+              - --no-progress
+              - "{{ developer_python39_version }}"
+          environment: "{{ uv_env }}"
+          register: developer_uv_python
+          changed_when: "'Installed Python' in developer_uv_python.stderr"
+
+        - name: Ask it its version
+          ansible.builtin.command:
+            argv: ["{{ ti_bin_dir }}/python3.9", --version]
+          register: developer_python39_said
+          changed_when: false
+
+        - name: Check that it's the version asked for
+          ansible.builtin.assert:
+            that: developer_python39_said.stdout == 'Python ' ~ developer_python39_version
+            fail_msg: "{{ ti_bin_dir }}/python3.9 says {{ developer_python39_said.stdout }}."
+            success_msg: "{{ developer_python39_said.stdout }}, for the portability suite"
+
+    - name: Clone OpenStax's cookbook at the ported commit
+      when: developer_cookbook | bool
+      block:
+        - name: Clone it
+          ansible.builtin.git:
+            repo: "{{ cookbook_repository }}"
+            dest: "{{ cookbook_dir }}"
+            version: "{{ cookbook_commit }}"
+            depth: 1
+            force: false
+          register: developer_cookbook_clone
+
+        - name: Check that it's at the ported commit
+          ansible.builtin.assert:
+            that: developer_cookbook_clone.after == cookbook_commit
+            fail_msg: "{{ cookbook_dir }} is at {{ developer_cookbook_clone.after }}, not {{ cookbook_commit }}."
+            quiet: true
+
+    - name: Tell TextbookImprover's suites where the cookbook is
+      ansible.builtin.blockinfile:
+        path: "{{ ti_shell_rc }}"
+        create: true
+        mode: "0644"
+        marker: "# {mark} textbookimprover-ansible: developer"
+        state: "{{ 'present' if developer_cookbook | bool else 'absent' }}"
+        block: |
+          export CNX_COOKBOOK="{{ cookbook_dir }}"

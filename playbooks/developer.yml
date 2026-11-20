@@ -1,0 +1,36 @@
+# Set up a machine for working on TextbookImprover itself: everything the
+# user playbook installs, but a clone of main in place of a release, the full
+# TeX Live in place of TinyTeX, every Pandoc the collection pins, LibreOffice,
+# and what the test suites need beyond that. Run it on the machine itself:
+#
+#   ansible-playbook -i localhost, -c local -K oerforge.textbookimprover.developer
+#
+# The settings below are this playbook's; -e changes any of them.
+- name: Set up TextbookImprover for working on it
+  hosts: all
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    # A clone of main, which the play makes once and then leaves alone: it's
+    # the developer's own to update, and may hold work in progress.
+    ti_source: git
+    ti_update_clone: false
+    # Every package and language, so that the suites skip none for TeX.
+    tex_distribution: texlive
+    # The newest Pandoc as pandoc, and the earlier pinned ones beside it, to
+    # run the suites under each before a release.
+    pandoc_versions: ["3.14", "3.13", "3.12.1"]
+  roles:
+    - oerforge.textbookimprover.base
+    - oerforge.textbookimprover.python
+    - oerforge.textbookimprover.pandoc
+    - role: oerforge.textbookimprover.tex
+      when: ti_tex | default(true) | bool
+    - role: oerforge.textbookimprover.validators
+      when: ti_validators | default(true) | bool
+    - role: oerforge.textbookimprover.browser_checks
+      when: ti_browser_checks | default(true) | bool
+    - role: oerforge.textbookimprover.libreoffice
+      when: ti_libreoffice | default(true) | bool
+    - oerforge.textbookimprover.developer
+    - oerforge.textbookimprover.textbookimprover

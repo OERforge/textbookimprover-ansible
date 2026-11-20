@@ -3,18 +3,20 @@
 # with the collection mounted at /collection (tests/run-scenarios.sh starts it).
 #
 # It installs ansible-core from apt, as bootstrap.sh will, makes an ordinary
-# user with sudo, runs the user playbook as that user, runs it again to see
-# that nothing changes, then runs the user step alone with sudo taken away.
+# user with sudo, runs a playbook as that user, runs it again to see that
+# nothing changes, then runs the user step alone with sudo taken away.
 #
 # Optional, in the environment:
 #   TI_TEST_CA       a file of CA certificates to trust, for a network whose
-#                    proxy inspects HTTPS (given to Node and pip as well)
+#                    proxy inspects HTTPS (given to Node, pip, and uv as well)
 #   TI_TEST_SOURCES  an apt sources file to use in place of the image's
 #   TI_TEST_BINDEP   a folder holding bindep and its dependencies, to run
 #                    tests/unit/test_bindep.py against this host
 #   TI_TEST_SUITES   the TextbookImprover suites to run as the user afterward
 #                    (tests/run-*.py names, space-separated), or "all"
 #   TI_TEST_EXTRA    more -e options for every play
+#   TI_TEST_PLAYBOOK the collection's playbook to run: user (the default) or
+#                    developer
 #   TI_TEST_PROXY    an HTTP proxy for apt and the play's downloads, for a
 #                    container that reaches the network only through one
 #                    (tests/run-scenarios.sh then shares the host's network)
@@ -24,6 +26,11 @@ say() { printf '\n== %s\n' "$*"; }
 export DEBIAN_FRONTEND=noninteractive
 
 proxy_env=()
+playbook="${TI_TEST_PLAYBOOK:-user}"
+case "$playbook" in
+    user|developer) ;;
+    *) echo "TI_TEST_PLAYBOOK is $playbook; it's user or developer." >&2; exit 2 ;;
+esac
 if [ -n "${TI_TEST_PROXY:-}" ]; then
     printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\n' \
         "$TI_TEST_PROXY" "$TI_TEST_PROXY" > /etc/apt/apt.conf.d/90test-proxy
@@ -50,7 +57,8 @@ if [ -n "${TI_TEST_CA:-}" ]; then
     # Node and pip may keep lists of their own; give them the system's, which
     # update-ca-certificates makes below.
     proxy_env+=(NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-                PIP_CERT=/etc/ssl/certs/ca-certificates.crt)
+                PIP_CERT=/etc/ssl/certs/ca-certificates.crt
+                SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt)
 fi
 
 say "ansible-core from apt"
@@ -72,7 +80,7 @@ as_tester() {
 play() {
     # shellcheck disable=SC2086
     as_tester ansible-playbook -i localhost, -c local ${TI_TEST_EXTRA:-} \
-        oerforge.textbookimprover.user "$@"
+        "oerforge.textbookimprover.$playbook" "$@"
 }
 
 if [ -n "${TI_TEST_BINDEP:-}" ]; then
@@ -91,10 +99,10 @@ PLAY
     PYTHONPATH="$TI_TEST_BINDEP" python3 /collection/tests/unit/test_bindep.py /tmp/facts.json
 fi
 
-say "the user playbook, first run"
+say "the $playbook playbook, first run"
 play | tee /tmp/first.log | tail -25
 
-say "the user playbook, second run: nothing should change"
+say "the $playbook playbook, second run: nothing should change"
 play | tee /tmp/second.log | tail -4
 if ! grep -Eq 'changed=0 +unreachable=0 +failed=0' /tmp/second.log; then
     echo "FAIL: the second run changed something"
@@ -117,6 +125,10 @@ as_tester bash -ic 'echo "T=$T"; command -v pandoc; pandoc --version | head -1;
     [ -n "${EPUBCHECK_JAR:-}" ] && java -jar "$EPUBCHECK_JAR" --version 2>&1 | head -1
     [ -n "${VNU_JAR:-}" ] && echo "vnu $(java -jar "$VNU_JAR" --version 2>&1)"
     [ -n "${VERAPDF:-}" ] && "$VERAPDF" --version 2>&1 | head -1
+    ls ~/.local/bin | grep "^pandoc-" | tr "\n" " "; echo
+    if command -v python3.9 >/dev/null; then command -v python3.9; python3.9 --version; fi
+    if command -v soffice >/dev/null; then soffice --version; fi
+    [ -n "${CNX_COOKBOOK:-}" ] && echo "CNX_COOKBOOK=$CNX_COOKBOOK $(git -C "$CNX_COOKBOOK" rev-parse --short HEAD)"
     for v in PLAYWRIGHT_BROWSERS_PATH PUPPETEER_EXECUTABLE_PATH; do
         [ -n "${!v:-}" ] && echo "$v=${!v}"
     done
