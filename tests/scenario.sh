@@ -15,11 +15,31 @@
 #   TI_TEST_SUITES   the TextbookImprover suites to run as the user afterward
 #                    (tests/run-*.py names, space-separated), or "all"
 #   TI_TEST_EXTRA    more -e options for every play
+#   TI_TEST_PROXY    an HTTP proxy for apt and the play's downloads, for a
+#                    container that reaches the network only through one
+#                    (tests/run-scenarios.sh then shares the host's network)
 set -eu -o pipefail
 
 say() { printf '\n== %s\n' "$*"; }
 export DEBIAN_FRONTEND=noninteractive
 
+proxy_env=()
+if [ -n "${TI_TEST_PROXY:-}" ]; then
+    printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\n' \
+        "$TI_TEST_PROXY" "$TI_TEST_PROXY" > /etc/apt/apt.conf.d/90test-proxy
+    # A minimal image has no CA bundle until ca-certificates is installed,
+    # and apt's own user may not be able to read the file where it's mounted.
+    if [ -n "${TI_TEST_CA:-}" ]; then
+        install -m 0644 "$TI_TEST_CA" /etc/apt/test-ca.crt
+        printf 'Acquire::https::CAInfo "/etc/apt/test-ca.crt";\n' >> /etc/apt/apt.conf.d/90test-proxy
+    fi
+    for name in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY; do
+        export "$name=$TI_TEST_PROXY"
+        proxy_env+=("$name=$TI_TEST_PROXY")
+    done
+    export no_proxy=localhost,127.0.0.1 NO_PROXY=localhost,127.0.0.1
+    proxy_env+=(no_proxy=localhost,127.0.0.1 NO_PROXY=localhost,127.0.0.1)
+fi
 if [ -n "${TI_TEST_SOURCES:-}" ]; then
     cp "$TI_TEST_SOURCES" /etc/apt/sources.list
 fi
@@ -43,7 +63,7 @@ ln -s /collection /opt/collections/ansible_collections/oerforge/textbookimprover
 
 as_tester() {
     sudo -u tester -H env ANSIBLE_COLLECTIONS_PATH=/opt/collections \
-        ANSIBLE_FORCE_COLOR=0 "$@"
+        ANSIBLE_FORCE_COLOR=0 ${proxy_env[@]+"${proxy_env[@]}"} "$@"
 }
 play() {
     # shellcheck disable=SC2086
@@ -86,8 +106,15 @@ as_tester bash -ic 'echo "T=$T"; command -v pandoc; pandoc --version | head -1;
     git -C "$T" log -1 --format="%h %s";
     if command -v lualatex >/dev/null; then
         command -v lualatex; lualatex --version | head -1
-    fi' 2>/dev/null
-grep -h -A4 "Check that it.s recent enough" /tmp/first.log | grep -o "LaTeX [0-9-]*" | head -1
+    fi
+    for v in EPUBCHECK_JAR VNU_JAR VERAPDF VERAPDF_WCAG; do
+        [ -n "${!v:-}" ] && echo "$v=${!v}"
+    done
+    [ -n "${EPUBCHECK_JAR:-}" ] && java -jar "$EPUBCHECK_JAR" --version 2>&1 | head -1
+    [ -n "${VNU_JAR:-}" ] && echo "vnu $(java -jar "$VNU_JAR" --version 2>&1)"
+    [ -n "${VERAPDF:-}" ] && "$VERAPDF" --version 2>&1 | head -1
+    true' 2>/dev/null
+{ grep -h -A4 "Check that it.s recent enough" /tmp/first.log | grep -o "LaTeX [0-9-]*" | head -1; } || true
 
 if [ -n "${TI_TEST_SUITES:-}" ]; then
     say "TextbookImprover's suites, as the user: ${TI_TEST_SUITES}"

@@ -16,6 +16,8 @@ file
 fontconfig
 git
 gpg
+# gpgv checks a download's signature; Debian 13's apt no longer brings it
+gpgv [platform:dpkg]
 perl
 tar
 unzip

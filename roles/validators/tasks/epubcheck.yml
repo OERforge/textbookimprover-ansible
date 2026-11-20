@@ -1,0 +1,13 @@
+- name: Download epubcheck, refused unless its SHA-256 matches
+  ansible.builtin.get_url:
+    url: "{{ epubcheck_release_url }}/v{{ epubcheck_version }}/epubcheck-{{ epubcheck_version }}.zip"
+    dest: "{{ ti_cache_dir }}/epubcheck-{{ epubcheck_version }}.zip"
+    checksum: "sha256:{{ pins_epubcheck[epubcheck_version] }}"
+    mode: "0644"
+
+- name: Unpack it
+  ansible.builtin.unarchive:
+    src: "{{ ti_cache_dir }}/epubcheck-{{ epubcheck_version }}.zip"
+    dest: "{{ ti_opt_dir }}"
+    remote_src: true
+    creates: "{{ epubcheck_jar }}"

@@ -1,0 +1,20 @@
+- name: Download the Nu checker from npm, refused unless its SHA-256 matches
+  ansible.builtin.get_url:
+    url: "{{ vnu_registry_url }}/vnu-jar-{{ vnu_version }}.tgz"
+    dest: "{{ ti_cache_dir }}/vnu-jar-{{ vnu_version }}.tgz"
+    checksum: "sha256:{{ pins_vnu[vnu_version] }}"
+    mode: "0644"
+
+- name: Make its folder
+  ansible.builtin.file:
+    path: "{{ ti_opt_dir }}/vnu-{{ vnu_version }}"
+    state: directory
+    mode: "0755"
+
+- name: Unpack its jar
+  ansible.builtin.unarchive:
+    src: "{{ ti_cache_dir }}/vnu-jar-{{ vnu_version }}.tgz"
+    dest: "{{ ti_opt_dir }}/vnu-{{ vnu_version }}"
+    remote_src: true
+    include: [package/build/dist/vnu.jar]
+    creates: "{{ vnu_jar }}"

@@ -42,7 +42,7 @@ def bindep_names(text, profiles):
 PLATFORMS = {
     "Ubuntu 24.04": {"ubuntu", "ubuntu-noble", "ubuntu-24", "ubuntu-24.04", "dpkg", "base-py3"},
     "Ubuntu 26.04": {"ubuntu", "ubuntu-resolute", "ubuntu-26", "ubuntu-26.04", "dpkg", "base-py3"},
-    "Debian 13": {"debian", "debian-trixie", "debian-13", "debian-13.2", "dpkg", "base-py3"},
+    "Debian 13": {"debian", "debian-trixie", "debian-13", "dpkg", "base-py3"},
     "Rocky 10.2": {"rocky", "rocky-red", "rocky-10", "rocky-10.2", "rpm", "redhat", "base-py3"},
 }
 PROFILES = ["default", "pdf", "validators", "browser", "slides", "test"]
@@ -91,6 +91,20 @@ for label, text in texts.items():
     check(f"{label}: the same packages as bindep on four platforms, "
           f"for every one or two of {len(PROFILES)} profiles", not wrong,
           "; ".join(wrong[:3]))
+
+# A host's facts, as Ansible gathered them, and the atoms bindep made on that
+# host, both measured.
+MEASURED = {
+    "Debian 13.7": (
+        {"distribution": "Debian", "distribution_release": "trixie",
+         "distribution_version": "13.7", "distribution_major_version": "13"},
+        {"debian", "debian-trixie", "debian-13", "dpkg", "base-py3"}),
+}
+for label, (facts, theirs) in MEASURED.items():
+    ours = plugin.platform_atoms(facts)
+    theirs = {"platform:" + atom for atom in theirs}
+    check(f"{label}'s platform atoms from its facts are bindep's there", ours == theirs,
+          f"ours only: {sorted(ours - theirs)}; bindep's only: {sorted(theirs - ours)}")
 
 if len(sys.argv) > 1:
     with open(sys.argv[1], encoding="utf-8") as handle:

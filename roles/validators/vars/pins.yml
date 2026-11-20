@@ -1,0 +1,56 @@
+# The SHA-256 of each download, measured when it was added. epubcheck and the
+# Nu checker publish no checksum or signature of their own beyond npm's
+# integrity value, which the Nu checker's tarball matched. veraPDF's
+# installer is checked against its signature as well, with files/verapdf.asc.
+epubcheck_pins:
+  "5.4.0": 33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c
+vnu_pins:
+  "26.11.14": 115cf1f0bd281c931a350b7642ff2614884d35bd2f3e2ce25a6763fea9083b00
+verapdf_pins:
+  "1.30.4": 04415ef3f149526a3048b9889723e81320ddf013bd891bcc7f0f297f3eadcc23
+
+# veraPDF's signing key, whose copy is files/verapdf.asc, as veraPDF's
+# documentation gives it.
+verapdf_key_fingerprint: 13DD102B4DD69354D12DE5A83184863278B17FE7
+
+# The WCAG modules for each veraPDF: wcag-validation at veraPDF's own
+# version, the newest wcag-algorithms its POM's range takes, the libraries at
+# the versions their POMs name, and the two machine profiles from the
+# profiles repository's branch for the release (rel/1.30), pinned at the
+# commit the branch was at when they were measured. Each jar matched Maven
+# Central's own SHA-1 file, and veraPDF's two matched veraPDF's signature.
+verapdf_wcag_files:
+  "1.30.4":
+    - name: wcag-validation-1.30.4.jar
+      url: https://repo1.maven.org/maven2/org/verapdf/wcag-validation/1.30.4/wcag-validation-1.30.4.jar
+      sha256: 3df85668b2479b6bb4c0337fc4fc3f936840c64e992e9cf3b2b2e4f50f27458e
+    - name: wcag-algorithms-1.30.3.jar
+      url: https://repo1.maven.org/maven2/org/verapdf/wcag-algorithms/1.30.3/wcag-algorithms-1.30.3.jar
+      sha256: dbc0b4e41b22570a747cee8977a6f75ee2945034910308d93bd30e576c6d00c8
+    - name: pdfbox-3.0.4.jar
+      url: https://repo1.maven.org/maven2/org/apache/pdfbox/pdfbox/3.0.4/pdfbox-3.0.4.jar
+      sha256: 09a0ff27d6f84a1dc40060cb0a01decf2ad4ef91c36bc91b9836c254be8aae45
+    - name: pdfbox-io-3.0.4.jar
+      url: https://repo1.maven.org/maven2/org/apache/pdfbox/pdfbox-io/3.0.4/pdfbox-io-3.0.4.jar
+      sha256: 7a9d4746f2e13a1e22f4efe47fbaf999763caea41748535af93a01eedc50f554
+    - name: fontbox-3.0.4.jar
+      url: https://repo1.maven.org/maven2/org/apache/pdfbox/fontbox/3.0.4/fontbox-3.0.4.jar
+      sha256: 2deec6232f5d6d3b31276592d31680ae9722af57d24cb0f76da70e2ba0e99e12
+    - name: jbig2-imageio-3.0.3.jar
+      url: https://repo1.maven.org/maven2/org/apache/pdfbox/jbig2-imageio/3.0.3/jbig2-imageio-3.0.3.jar
+      sha256: c80110fda57128563d3d0656bff78da8bf35a934cf54edfa10e8b76fc6389929
+    - name: commons-logging-1.3.4.jar
+      url: https://repo1.maven.org/maven2/commons-logging/commons-logging/1.3.4/commons-logging-1.3.4.jar
+      sha256: bc2dfe32f1ef06509e6a065144c1adf7b420eabf11a87f30bd127f8faa332016
+    - name: jai-imageio-core-1.4.0.jar
+      url: https://repo1.maven.org/maven2/com/github/jai-imageio/jai-imageio-core/1.4.0/jai-imageio-core-1.4.0.jar
+      sha256: 8ad3c68e9efffb10ac87ff8bc589adf64b04a729c5194c079efd0643607fd72a
+    - name: jai-imageio-jpeg2000-1.3.0.jar
+      url: https://repo1.maven.org/maven2/com/github/jai-imageio/jai-imageio-jpeg2000/1.3.0/jai-imageio-jpeg2000-1.3.0.jar
+      sha256: d7e1bc92ff198db14469826f1328802da0ef34e3d301fdb74eeb57bcf183e0f3
+    - name: WCAG-2-2-Machine-PDF20.xml
+      url: https://raw.githubusercontent.com/veraPDF/veraPDF-validation-profiles/8be0c882c7915978482eb4beb0b49c113a30d6d6/PDF_UA/WCAG-2-2-Machine-PDF20.xml
+      sha256: c42653ab2eb8717b3c76289917985ec18ecfa650266bf1cf2974b65e873a9bfa
+    - name: WCAG-2-2-Machine.xml
+      url: https://raw.githubusercontent.com/veraPDF/veraPDF-validation-profiles/8be0c882c7915978482eb4beb0b49c113a30d6d6/PDF_UA/WCAG-2-2-Machine.xml
+      sha256: 7535aad8c6dac35b647cd2cccce4c6660de62cc0ff30c6fcc3e386b5a9492e3f

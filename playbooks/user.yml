@@ -18,4 +18,6 @@
     - oerforge.textbookimprover.pandoc
     - role: oerforge.textbookimprover.tex
       when: ti_tex | default(true) | bool
+    - role: oerforge.textbookimprover.validators
+      when: ti_validators | default(true) | bool
     - oerforge.textbookimprover.textbookimprover

@@ -1,0 +1,120 @@
+- name: Look for veraPDF
+  ansible.builtin.stat:
+    path: "{{ verapdf_dir }}/verapdf"
+  register: verapdf_installed
+
+- name: Install veraPDF from its installer
+  when: not verapdf_installed.stat.exists
+  vars:
+    work: "{{ ti_cache_dir }}/verapdf-installer"
+    zip: verapdf-greenfield-{{ verapdf_version }}-installer.zip
+  environment:
+    # gpg's own folder, so that the user's keyring is never read or changed
+    GNUPGHOME: "{{ ti_cache_dir }}/verapdf-installer/gnupg"
+  block:
+    - name: Start with an empty folder for the installer
+      ansible.builtin.file:
+        path: "{{ work }}"
+        state: absent
+
+    - name: Make the folder, and gpg's
+      ansible.builtin.file:
+        path: "{{ work }}/gnupg"
+        state: directory
+        mode: "0700"
+
+    - name: Download the installer, refused unless its SHA-256 matches
+      ansible.builtin.get_url:
+        url: "{{ verapdf_release_url }}/{{ verapdf_version.split('.')[:2] | join('.') }}/{{ zip }}"
+        dest: "{{ ti_cache_dir }}/{{ zip }}"
+        checksum: "sha256:{{ pins_verapdf[verapdf_version] }}"
+        mode: "0644"
+
+    - name: Download its signature
+      ansible.builtin.get_url:
+        url: "{{ verapdf_release_url }}/{{ verapdf_version.split('.')[:2] | join('.') }}/{{ zip }}.asc"
+        dest: "{{ work }}/{{ zip }}.asc"
+        mode: "0644"
+
+    - name: Copy veraPDF's key
+      ansible.builtin.copy:
+        src: verapdf.asc
+        dest: "{{ work }}/verapdf.asc"
+        mode: "0644"
+
+    - name: Read the key's fingerprint
+      ansible.builtin.command:
+        argv: [gpg, --show-keys, --with-colons, "{{ work }}/verapdf.asc"]
+      register: verapdf_key
+      changed_when: false
+
+    - name: Check that the key is veraPDF's
+      ansible.builtin.assert:
+        that: ('fpr:::::::::' ~ verapdf_key_fingerprint ~ ':') in verapdf_key.stdout_lines
+        fail_msg: The key in files/verapdf.asc isn't veraPDF's ({{ verapdf_key_fingerprint }}).
+        quiet: true
+
+    - name: Make a keyring of it alone
+      ansible.builtin.command:
+        argv: [gpg, --dearmor, --output, "{{ work }}/verapdf.gpg", "{{ work }}/verapdf.asc"]
+        creates: "{{ work }}/verapdf.gpg"
+
+    - name: Check the installer's signature
+      ansible.builtin.command:
+        argv: [gpgv, --keyring, "{{ work }}/verapdf.gpg", "{{ work }}/{{ zip }}.asc", "{{ ti_cache_dir }}/{{ zip }}"]
+      changed_when: false
+
+    - name: Unpack the installer
+      ansible.builtin.unarchive:
+        src: "{{ ti_cache_dir }}/{{ zip }}"
+        dest: "{{ work }}"
+        remote_src: true
+
+    - name: Install veraPDF into its own folder
+      ansible.builtin.command:
+        argv:
+          - java
+          - -DINSTALL_PATH={{ verapdf_dir }}
+          - -jar
+          - "{{ work }}/verapdf-greenfield-{{ verapdf_version }}/verapdf-izpack-installer-{{ verapdf_version }}.jar"
+          - -options-system
+        creates: "{{ verapdf_dir }}/verapdf"
+
+    - name: Remove the installer
+      ansible.builtin.file:
+        path: "{{ work }}"
+        state: absent
+
+- name: Install veraPDF's WCAG modules
+  when: verapdf_wcag | bool
+  block:
+    - name: Make their folder
+      ansible.builtin.file:
+        path: "{{ verapdf_wcag_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download each, refused unless its SHA-256 matches
+      ansible.builtin.get_url:
+        url: "{{ item.url }}"
+        dest: "{{ verapdf_wcag_dir }}/{{ item.name }}"
+        checksum: "sha256:{{ item.sha256 }}"
+        mode: "0644"
+      loop: "{{ verapdf_wcag_files[verapdf_version] }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: List the folder
+      ansible.builtin.find:
+        paths: "{{ verapdf_wcag_dir }}"
+      register: verapdf_wcag_found
+
+    - name: Remove anything else from it, since Java would load a second copy of a class
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: >-
+        {{ verapdf_wcag_found.files | map(attribute='path')
+           | reject('in', verapdf_wcag_files[verapdf_version]
+                          | map(attribute='name') | map('regex_replace', '^', verapdf_wcag_dir ~ '/'))
+           | list }}

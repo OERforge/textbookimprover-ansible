@@ -101,6 +101,11 @@ def platform_atoms(facts):
     distro_id = "".join((facts.get("distribution") or "").split()).lower()
     codename = (facts.get("distribution_release") or "").lower()
     release = (facts.get("distribution_version") or "").lower()
+    if distro_id == "debian":
+        # bindep reads VERSION_ID from /etc/os-release, which is the major
+        # release on Debian (13), where Ansible's distribution_version is
+        # /etc/debian_version's point release (13.7).
+        release = (facts.get("distribution_major_version") or "").lower()
     atoms = {distro_id}
     bits = codename.split()
     for count in range(1, len(bits) + 1):

@@ -10,7 +10,7 @@ What's known about each distribution the collection supports or may support, and
 - **Java**: OpenJDK 17, 21, and 25 (measured 2026-11-13).
 - **Node**: 18.19.1, too old for Ace, which needs 20 (measured 2026-11-14).
 - **Pandoc** from `apt` is 3.1.3, which TextbookImprover refuses; the collection installs Pandoc's own releases.
-- **TeX Live** from `apt` is 2023's; TextbookImprover needs LaTeX 2026-06-01 or later, so the collection will install TinyTeX.
+- **TeX Live** from `apt` is 2023's; TextbookImprover needs LaTeX 2026-06-01 or later, so the collection installs TinyTeX or TeX Live itself.
 - **bubblewrap** 0.9.0, in `main`. Its AppArmor profile, `bwrap-userns-restrict`, is an extra profile in `apparmor-profiles`, under `/usr/share/apparmor/extra-profiles/`, which nothing loads until it's copied into `/etc/apparmor.d/` (read in the packages, 2026-11-19).
 
 ## Ubuntu 26.04 LTS (resolute)
@@ -25,12 +25,16 @@ What's known about each distribution the collection supports or may support, and
 
 ## Debian 13 (trixie)
 
-Not yet measured: no Debian mirror was reachable from where the collection has been tested. To be tried under WSL (`wsl --install Debian`).
+Measured 2026-11-19 on 13.7, built with `debootstrap --variant=minbase` from `deb.debian.org` (its Release file signed by Debian's archive key), in a container.
 
-- **Java**: OpenJDK 21 and 25, not 17 (read). Hence `openjdk-21-jre-headless` in `bindep.txt`.
-- **Node**: 20.19.2 with Debian's security updates (read), so `nodejs` and `npm` come from `apt`.
-- **Python**: 3.13 (read).
+- **Release**: `/etc/os-release` says `VERSION_ID="13"`, where `/etc/debian_version` says `13.7`. Ansible's `distribution_version` is the second, `distribution_major_version` the first; bindep's platform atoms use the first (`platform:debian-13`, never `debian-13.7`), and so does the lookup plugin.
+- **ansible-core**: 2.19.11, from `apt`.
+- **Python**: 3.13.5.
+- **Java**: OpenJDK 21 (21.0.12), and 25; not 17 (read). Hence `openjdk-21-jre-headless` in `bindep.txt`.
+- **Node**: 20.19.2 with Debian's security updates, so `nodejs` and `npm` come from `apt`.
+- **`gpgv`**: not installed with `apt`, which checks the archive with Sequoia's `sqv` on Debian 13; Ubuntu's `apt` still brings `gpgv`. Hence `gpgv [platform:dpkg]` in `bindep.txt`, since the roles check signatures with it.
 - **User namespaces**: not restricted by AppArmor as Ubuntu restricts them, by default (read).
+- **WSL**: not yet tried (`wsl --install Debian`).
 
 ## The Red Hat family, later
 

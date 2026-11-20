@@ -1,0 +1,87 @@
+- name: Install Java for the validators
+  tags: [system]
+  become: true
+  ansible.builtin.apt:
+    name: "{{ query('oerforge.textbookimprover.bindep', profiles=['validators']) }}"
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+
+- name: Install the validators
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  vars:
+    epubcheck_jar: "{{ ti_opt_dir }}/epubcheck-{{ epubcheck_version }}/epubcheck.jar"
+    vnu_jar: "{{ ti_opt_dir }}/vnu-{{ vnu_version }}/package/build/dist/vnu.jar"
+    verapdf_dir: "{{ ti_opt_dir }}/verapdf-{{ verapdf_version }}"
+    verapdf_wcag_dir: "{{ ti_opt_dir }}/verapdf-wcag-{{ verapdf_version }}"
+    pins_epubcheck: "{{ (ti_pins.epubcheck | default({})) | combine(epubcheck_pins) }}"
+    pins_vnu: "{{ (ti_pins.vnu | default({})) | combine(vnu_pins) }}"
+    pins_verapdf: "{{ (ti_pins.verapdf | default({})) | combine(verapdf_pins) }}"
+  block:
+    - name: Read the pinned checksums
+      ansible.builtin.include_vars: pins.yml
+
+    - name: Stop on a version with no pinned checksum
+      ansible.builtin.assert:
+        that:
+          - epubcheck_version in pins_epubcheck
+          - vnu_version in pins_vnu
+          - verapdf_version in pins_verapdf
+          - not verapdf_wcag | bool or verapdf_version in verapdf_wcag_files
+        fail_msg: >-
+          A validator's version has no SHA-256 here (epubcheck {{ epubcheck_version }},
+          the Nu checker {{ vnu_version }}, veraPDF {{ verapdf_version }}). Give one you
+          trust in the inventory, as ti_pins: {epubcheck: {"<version>": <sha256>}} and
+          the like. veraPDF's WCAG modules are known only for
+          {{ verapdf_wcag_files.keys() | join(', ') }}; set verapdf_wcag to false for
+          another veraPDF.
+        quiet: true
+
+    - name: Install epubcheck
+      ansible.builtin.import_tasks: epubcheck.yml
+
+    - name: Install the Nu checker
+      ansible.builtin.import_tasks: vnu.yml
+
+    - name: Install veraPDF
+      ansible.builtin.import_tasks: verapdf.yml
+
+    - name: Tell TextbookImprover where they are
+      ansible.builtin.blockinfile:
+        path: "{{ ti_shell_rc }}"
+        create: true
+        mode: "0644"
+        marker: "# {mark} textbookimprover-ansible: validators"
+        block: |
+          export EPUBCHECK_JAR="{{ epubcheck_jar }}"
+          export VNU_JAR="{{ vnu_jar }}"
+          export VERAPDF="{{ verapdf_dir }}/verapdf"
+          {% if verapdf_wcag | bool %}
+          export VERAPDF_WCAG="{{ verapdf_wcag_dir }}"
+          {% endif %}
+
+    - name: Ask each its version
+      ansible.builtin.command:
+        argv: "{{ item.argv }}"
+      register: validators_versions
+      changed_when: false
+      loop:
+        - {name: epubcheck, argv: [java, -jar, "{{ epubcheck_jar }}", --version], want: "EPUBCheck v{{ epubcheck_version }}"}
+        - {name: the Nu checker, argv: [java, -jar, "{{ vnu_jar }}", --version], want: "{{ vnu_version }}"}
+        - {name: veraPDF, argv: ["{{ verapdf_dir }}/verapdf", --version], want: "veraPDF {{ verapdf_version }}"}
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check that each is the version installed
+      vars:
+        said: "{{ (item.stdout ~ '\n' ~ item.stderr) | trim }}"
+      ansible.builtin.assert:
+        that: item.item.want in said
+        fail_msg: "{{ item.item.name }} says {{ said | truncate(200) }}, not {{ item.item.want }}."
+        success_msg: "{{ item.item.name }}: {{ said.splitlines() | select('search', item.item.want | regex_escape) | first }}"
+      loop: "{{ validators_versions.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+        extended: false
