@@ -54,13 +54,42 @@ The `developer` playbook installs everything the `user` playbook does, with thes
 ansible-playbook -i localhost, -c local -K oerforge.textbookimprover.developer
 ```
 
-Its settings are the playbook's own, so an inventory doesn't change them, but `-e` does: `-e tex_distribution=tinytex`, `-e '{"pandoc_versions": ["3.14"]}'`, or `-e ti_libreoffice=false`; `-e developer_python39=false` and `-e developer_cookbook=false` leave out those two. The `user` playbook installs LibreOffice too with `-e ti_libreoffice=true`.
+Each of these is a default of the `developer` profile, which any setting changes (below): `tex_distribution: tinytex`, `pandoc_versions: ["3.14"]`, `ti_libreoffice: false`, `developer_python39: false`, or `developer_cookbook: false`.
+
+### Settings
+
+Every setting can go in an inventory, so that a machine's choices are kept in a file, and `-e` changes any of them for one run. An inventory for the machine itself, kept wherever you like, but outside the collection's folder:
+
+```yaml
+# ~/textbookimprover-machine.yml
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ti_libreoffice: true
+      pandoc_versions: ["3.14", "3.13"]
+      tex_repository: https://ctan.math.illinois.edu/systems/texlive/tlnet
+```
+
+```bash
+ansible-playbook -i ~/textbookimprover-machine.yml -K oerforge.textbookimprover.user
+```
+
+The same settings can go in a `host_vars/localhost.yml` beside an inventory file in a folder of its own, given with `-i` as the folder. The roles' defaults come first, then the inventory's settings (`group_vars` before `host_vars`, as Ansible always takes them), then `-e`. Each playbook sets one thing itself, `ti_profile` (`user` or `developer`), which the defaults follow, so the two playbooks differ only in their defaults and in the `developer` role.
+
+The switches for the optional parts, each `true` or `false`:
+
+- `ti_tex`, `ti_validators`, and `ti_browser_checks`: on in both profiles.
+- `ti_libreoffice`: on in `developer`, off in `user`.
+- `verapdf_wcag`, `browser_checks_ace`, `browser_checks_venv_on_path`, `developer_python39`, and `developer_cookbook`: the parts of a role, each on by default.
+
+Inventories, like keys and passwords, are kept out of the collection's commits and builds (Testing, below), so one put in the collection's folder by mistake isn't committed.
 
 ### What goes where
 
 - Pandoc's releases in `~/.local/opt/pandoc-<version>/`, linked as `~/.local/bin/pandoc-<version>`, the first of `pandoc_versions` as `~/.local/bin/pandoc` too. Several can sit side by side: `-e '{"pandoc_versions": ["3.14", "3.13"]}'`.
-- TextbookImprover in `~/tools/textbookimprover-<release>/`, or `~/tools/textbookimprover/` for a clone of `main` (`-e ti_source=git`). `ti_dir` puts it elsewhere, and `ti_version` names the release, or the branch, tag, or commit for `git`.
-- TeX: TinyTeX in `~/.TinyTeX/`, as the installation page has it, with the page's packages added (`tex_extra_packages` adds more). Or, with `-e tex_distribution=texlive`, TeX Live from its own installer in `~/.local/opt/texlive/2026/`, the full scheme by default (`texlive_scheme`), which has every package but takes several gigabytes; without its documentation and sources, as the role installs it, it took 17 minutes here. Either is brought up to date when first installed, and afterward only with `-e tex_update=true`, so that a run changes nothing unasked. `tex_repository` names the mirror `tlmgr` uses: a network that allows only named hosts needs a fixed one, such as `https://ctan.math.illinois.edu/systems/texlive/tlnet`.
+- TextbookImprover in `~/tools/textbookimprover-<release>/`, or `~/tools/textbookimprover/` for a clone of `main` (`ti_source: git`, the `developer` profile's default). `ti_dir` puts it elsewhere, and `ti_version` names the release, or the branch, tag, or commit for `git`.
+- TeX: TinyTeX in `~/.TinyTeX/`, as the installation page has it, with the page's packages added (`tex_extra_packages` adds more). Or, with `tex_distribution: texlive` (the `developer` profile's default), TeX Live from its own installer in `~/.local/opt/texlive/2026/`, the full scheme by default (`texlive_scheme`), which has every package but takes several gigabytes; without its documentation and sources, as the role installs it, it took 17 minutes here. Either is brought up to date when first installed, and afterward only with `-e tex_update=true`, so that a run changes nothing unasked. `tex_repository` names the mirror `tlmgr` uses: a network that allows only named hosts needs a fixed one, such as `https://ctan.math.illinois.edu/systems/texlive/tlnet`.
 - The validators, each in a folder of its own version under `~/.local/opt/`: epubcheck, the Nu HTML checker from npm's `vnu-jar` (where each version is one file, unlike the GitHub release named `latest`, which is rebuilt in place), and veraPDF from its installer, checked against veraPDF's signature as well as its pin. veraPDF's WCAG modules, for `--wcag`, go in `~/.local/opt/verapdf-wcag-<version>/`: nine jars from Maven Central and two profiles, each pinned for that veraPDF; `-e verapdf_wcag=false` leaves them out. Java 21 comes from `apt`.
 - The browser checks, for `--wcag`: Playwright from PyPI in a virtual environment, `~/.local/opt/textbookimprover-venv/`, which sees the system's Python packages too and whose `bin` goes first on `PATH` (`-e browser_checks_venv_on_path=false` leaves it off, and the tools are then run with its Python by name). Its headless Chromium in `~/.local/opt/ms-playwright/`, named by `PLAYWRIGHT_BROWSERS_PATH`: the role fetches and checks the archive itself, since Playwright checks only a download's length, and marks it the way Playwright does, so Playwright takes it for one it installed. Its libraries and fonts come from `apt`, Playwright's own list less Xvfb, so updating needs no `sudo`, where `playwright install --with-deps` asks each time. DAISY's Ace in `~/.local/opt/ace-<version>/`, installed with `npm ci` from a lock file in the collection that gives every package's SHA-512, and linked as `~/.local/bin/ace-puppeteer`, with `PUPPETEER_EXECUTABLE_PATH` naming Playwright's Chromium; and Node for it in `~/.local/opt/node-v<version>-linux-x64/`, linked as `node`, `npm`, and `npx`, from Node's own release, checked against Node's signed checksums as well as its pin, since the distributions' `npm` is older than Ace asks for. `-e browser_checks_ace=false` leaves out Ace and Node.
 - For the `developer` playbook: uv in `~/.local/opt/uv-<version>/`, not put on `PATH`, so a uv of your own is left alone, with its Pythons in `~/.local/opt/uv-python/`, its own cache, and none of your uv settings read; and OpenStax's cookbook in `~/tools/openstax-cookbook/`.

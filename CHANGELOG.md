@@ -20,6 +20,7 @@ What changed, newest first, as [Keep a Changelog](https://keepachangelog.com/en/
 
 ### Changed
 
+- Every setting can come from an inventory or `host_vars`, with `-e` over them. Each playbook now sets only `ti_profile`, and the roles' defaults follow it: the `developer` playbook's clone of `main`, full TeX Live, three Pandocs, and LibreOffice were play variables, which an inventory couldn't change. The switches for the optional roles (`ti_tex`, `ti_validators`, `ti_browser_checks`, `ti_libreoffice`) are defaults of the `base` role. The README has a Settings section.
 - The README says that the play's blocks in `~/.bashrc`, added at its end, take the place of a setup made by hand earlier in it, and how to try the playbooks without that.
 
 ### Fixed

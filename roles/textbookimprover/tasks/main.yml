@@ -32,7 +32,7 @@
         dest: "{{ ti_dir | trim }}"
         version: "{{ 'v' ~ ti_version if release else ti_version }}"
         depth: "{{ 1 if release else omit }}"
-        update: "{{ true if release else ti_update_clone }}"
+        update: "{{ true if release else ti_update_clone | bool }}"
         force: false
       register: ti_clone
 

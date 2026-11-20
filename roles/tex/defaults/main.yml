@@ -5,7 +5,9 @@
 #   texlive  TeX Live from its own installer, every package in the scheme
 #            (full by default: several gigabytes; 17 minutes here without its
 #            documentation and sources, which the role leaves out)
-tex_distribution: tinytex
+# TinyTeX for the user profile; TeX Live for the developer profile, whose
+# languages the suites need.
+tex_distribution: "{{ 'texlive' if ti_profile == 'developer' else 'tinytex' }}"
 
 # The repository tlmgr installs and updates from, set before anything is
 # fetched. Empty leaves TinyTeX's own choice (a mirror chosen for you), and

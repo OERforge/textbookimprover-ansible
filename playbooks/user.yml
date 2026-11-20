@@ -4,11 +4,15 @@
 #   ansible-playbook -i localhost, -c local -K oerforge.textbookimprover.user
 #
 # -K asks for the sudo password, which only the system packages need; with
-# --tags user, nothing needs it.
+# --tags user, nothing needs it. Its settings come from the roles' defaults,
+# which an inventory or host_vars changes, and -e over both (README,
+# Settings).
 - name: Set up TextbookImprover for converting books
   hosts: all
   gather_facts: true
   vars:
+    # Which playbook this is; the roles' defaults follow it.
+    ti_profile: user
     # The system's own Python, named so that ansible-core doesn't have to
     # guess, and warn that it guessed.
     ansible_python_interpreter: /usr/bin/python3
@@ -17,11 +21,11 @@
     - oerforge.textbookimprover.python
     - oerforge.textbookimprover.pandoc
     - role: oerforge.textbookimprover.tex
-      when: ti_tex | default(true) | bool
+      when: ti_tex | bool
     - role: oerforge.textbookimprover.validators
-      when: ti_validators | default(true) | bool
+      when: ti_validators | bool
     - role: oerforge.textbookimprover.browser_checks
-      when: ti_browser_checks | default(true) | bool
+      when: ti_browser_checks | bool
     - role: oerforge.textbookimprover.libreoffice
-      when: ti_libreoffice | default(false) | bool
+      when: ti_libreoffice | bool
     - oerforge.textbookimprover.textbookimprover

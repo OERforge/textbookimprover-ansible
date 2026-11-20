@@ -1,5 +1,18 @@
 # The person the tools are installed for, and their home folder: the person
 # running the play unless the inventory says otherwise.
+# Which profile the play is: user or developer. Each playbook names its own,
+# and the other roles' defaults follow it, so that an inventory, host_vars,
+# or -e can still change any of them.
+ti_profile: user
+
+# The switches for the roles that are optional: each on or off by profile
+# unless set. TeX, the validators, and the browser checks are on in both;
+# LibreOffice in developer only. Read by the playbooks.
+ti_tex: true
+ti_validators: true
+ti_browser_checks: true
+ti_libreoffice: "{{ ti_profile == 'developer' }}"
+
 ti_user: "{{ ansible_facts['user_id'] }}"
 ti_home: "{{ ansible_facts['user_dir'] }}"
 
