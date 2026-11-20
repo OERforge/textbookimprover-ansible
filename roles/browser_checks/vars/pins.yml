@@ -1,0 +1,34 @@
+# The SHA-256 of each download, measured when it was added.
+
+# Playwright's wheel from PyPI, and greenlet, the one package it needs, whose
+# wheels are built for each Python: 3.12 (Ubuntu 24.04), 3.13 (Debian 13),
+# and 3.14 (Ubuntu 26.04). Each matched PyPI's own digest.
+playwright_pins:
+  "1.65.2":
+    wheel: 58932d35f56767ab7ebcdd3d4a733bfb3e62a1a5bc43c08e28b9fa9b3e61cf33
+    greenlet: "3.5.6"
+greenlet_pins:
+  "3.5.6":
+    - 975736b002ed080d124cf81a79cb7e05cb26d6b3f5c7a7b651c0fcce70353aa1
+    - f98e8215e172f567ce80eeaed9107fb4d32b6c44f26983d9b8334658136a205a
+    - 9a09d59bef1db94f384b5bcc2d523694d338f3df6b757aeeaf7baca5d0c0be88
+
+# The headless Chromium for each browser version a Playwright asks for (its
+# browsers.json): Playwright's revision, the archive's address, its
+# SHA-256, and the browser's path inside. The archive is Chrome for Testing's
+# build, which Playwright's address redirects to Google's bucket for; its
+# MD5 matched the bucket's own.
+chromium_pins:
+  "159.0.8154.6":
+    revision: "1255"
+    url: https://cdn.playwright.dev/builds/cft/159.0.8154.6/linux64/chrome-headless-shell-linux64.zip
+    sha256: 77a6442fd3c8acd3bef9e1067fc26f5ef464277d22f0e8cb58dc3e4077a3e458
+    executable: chrome-headless-shell-linux64/chrome-headless-shell
+
+# Node's tarball for x86_64 Linux, and the release key that signed the
+# release's SHASUMS256.txt, whose copy is files/nodejs/<fingerprint>.asc, as
+# Node's README lists it.
+node_pins:
+  "26.13.1":
+    sha256: 5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864
+    signer: 5BE8A3F6C8A5C01D106C0AD820B1A390B168D356

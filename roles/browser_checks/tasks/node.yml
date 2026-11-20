@@ -1,0 +1,96 @@
+- name: Look for Node
+  ansible.builtin.stat:
+    path: "{{ node_dir }}/bin/node"
+  register: node_installed
+
+- name: Install Node from its release
+  when: not node_installed.stat.exists
+  vars:
+    work: "{{ ti_cache_dir }}/node-release"
+    tarball: node-v{{ node_version }}-linux-x64.tar.xz
+    signer: "{{ pins_node[node_version].signer }}"
+  environment:
+    # gpg's own folder, so that the user's keyring is never read or changed
+    GNUPGHOME: "{{ ti_cache_dir }}/node-release/gnupg"
+  block:
+    - name: Start with an empty folder for the checks
+      ansible.builtin.file:
+        path: "{{ work }}"
+        state: absent
+
+    - name: Make the folder, and gpg's
+      ansible.builtin.file:
+        path: "{{ work }}/gnupg"
+        state: directory
+        mode: "0700"
+
+    - name: Download the tarball, refused unless its SHA-256 matches
+      ansible.builtin.get_url:
+        url: "{{ node_release_url }}/v{{ node_version }}/{{ tarball }}"
+        dest: "{{ ti_cache_dir }}/{{ tarball }}"
+        checksum: "sha256:{{ pins_node[node_version].sha256 }}"
+        mode: "0644"
+
+    - name: Download the release's checksums and their signature
+      ansible.builtin.get_url:
+        url: "{{ node_release_url }}/v{{ node_version }}/{{ item }}"
+        dest: "{{ work }}/{{ item }}"
+        mode: "0644"
+      loop: [SHASUMS256.txt, SHASUMS256.txt.sig]
+
+    - name: Copy the release key that signed them
+      ansible.builtin.copy:
+        src: nodejs/{{ signer }}.asc
+        dest: "{{ work }}/signer.asc"
+        mode: "0644"
+
+    - name: Read the key's fingerprint
+      ansible.builtin.command:
+        argv: [gpg, --show-keys, --with-colons, "{{ work }}/signer.asc"]
+      register: node_key
+      changed_when: false
+
+    - name: Check that the key is the one pinned
+      ansible.builtin.assert:
+        that: ('fpr:::::::::' ~ signer ~ ':') in node_key.stdout_lines
+        fail_msg: The key in files/nodejs/{{ signer }}.asc isn't {{ signer }}.
+        quiet: true
+
+    - name: Make a keyring of it alone
+      ansible.builtin.command:
+        argv: [gpg, --dearmor, --output, "{{ work }}/signer.gpg", "{{ work }}/signer.asc"]
+        creates: "{{ work }}/signer.gpg"
+
+    - name: Check the checksums' signature
+      ansible.builtin.command:
+        argv: [gpgv, --keyring, "{{ work }}/signer.gpg", "{{ work }}/SHASUMS256.txt.sig", "{{ work }}/SHASUMS256.txt"]
+      changed_when: false
+
+    - name: Read the signed checksums
+      ansible.builtin.slurp:
+        src: "{{ work }}/SHASUMS256.txt"
+      register: node_sums
+
+    - name: Check that the signed checksum is the pinned one
+      ansible.builtin.assert:
+        that: (pins_node[node_version].sha256 ~ '  ' ~ tarball) in (node_sums.content | b64decode).splitlines()
+        fail_msg: Node's signed SHASUMS256.txt doesn't give {{ tarball }} the pinned SHA-256.
+        quiet: true
+
+    - name: Unpack Node
+      ansible.builtin.unarchive:
+        src: "{{ ti_cache_dir }}/{{ tarball }}"
+        dest: "{{ ti_opt_dir }}"
+        remote_src: true
+
+    - name: Remove the checks' folder
+      ansible.builtin.file:
+        path: "{{ work }}"
+        state: absent
+
+- name: Link node, npm, and npx where the shell finds them
+  ansible.builtin.file:
+    src: "{{ node_dir }}/bin/{{ item }}"
+    dest: "{{ ti_bin_dir }}/{{ item }}"
+    state: link
+  loop: [node, npm, npx]

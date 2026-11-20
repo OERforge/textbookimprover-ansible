@@ -20,4 +20,6 @@
       when: ti_tex | default(true) | bool
     - role: oerforge.textbookimprover.validators
       when: ti_validators | default(true) | bool
+    - role: oerforge.textbookimprover.browser_checks
+      when: ti_browser_checks | default(true) | bool
     - oerforge.textbookimprover.textbookimprover

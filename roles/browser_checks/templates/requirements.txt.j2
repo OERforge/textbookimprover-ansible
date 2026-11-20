@@ -1,0 +1,4 @@
+# Written by textbookimprover-ansible for pip's --require-hashes.
+playwright=={{ playwright_version }} --hash=sha256:{{ pins_playwright[playwright_version].wheel }}
+greenlet=={{ pins_playwright[playwright_version].greenlet }}{% for h in pins_greenlet[pins_playwright[playwright_version].greenlet] %} --hash=sha256:{{ h }}{% endfor %}
+

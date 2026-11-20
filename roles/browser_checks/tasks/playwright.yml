@@ -1,0 +1,145 @@
+- name: Make the virtual environment, seeing the system's Python packages too
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -m, venv, --system-site-packages, "{{ browser_checks_venv }}"]
+    creates: "{{ browser_checks_venv }}/bin/python"
+
+- name: Write the pinned requirements
+  ansible.builtin.template:
+    src: requirements.txt.j2
+    dest: "{{ browser_checks_venv }}/textbookimprover-requirements.txt"
+    mode: "0644"
+
+- name: Install Playwright, refused unless every wheel's SHA-256 matches
+  ansible.builtin.command:
+    argv:
+      - "{{ browser_checks_venv }}/bin/python"
+      - -m
+      - pip
+      - install
+      - --disable-pip-version-check
+      - --no-input
+      - --require-hashes
+      - "--only-binary=:all:"
+      - -r
+      - "{{ browser_checks_venv }}/textbookimprover-requirements.txt"
+  register: browser_checks_pip
+  changed_when: "'Successfully installed' in browser_checks_pip.stdout"
+
+- name: Find Playwright's driver
+  ansible.builtin.command:
+    argv:
+      - "{{ browser_checks_venv }}/bin/python"
+      - -I
+      - -c
+      - |
+        import os, playwright
+        print(os.path.realpath(os.path.join(os.path.dirname(playwright.__file__), "driver", "package")))
+  register: browser_checks_driver
+  changed_when: false
+
+- name: Read which Chromium it asks for
+  ansible.builtin.slurp:
+    src: "{{ browser_checks_driver.stdout }}/browsers.json"
+  register: browser_checks_browsers_json
+
+- name: Note the Chromium
+  vars:
+    wanted: "{{ (browser_checks_browsers_json.content | b64decode | from_json).browsers
+                | selectattr('name', 'equalto', 'chromium-headless-shell') | first }}"
+  ansible.builtin.set_fact:
+    chromium_version: "{{ wanted.browserVersion }}"
+    chromium_revision: "{{ wanted.revision }}"
+
+- name: Stop on a Chromium with no pinned checksum
+  ansible.builtin.assert:
+    that:
+      - chromium_version in pins_chromium
+      - pins_chromium[chromium_version].revision == chromium_revision
+    fail_msg: >-
+      Playwright {{ playwright_version }} asks for Chromium {{ chromium_version }}
+      (revision {{ chromium_revision }}), which has no pin here. Give one you trust in the
+      inventory, as ti_pins: {chromium: {"{{ chromium_version }}": {revision:
+      "{{ chromium_revision }}", url: <address>, sha256: <sha256>, executable: <path in
+      the archive>}}}.
+    quiet: true
+
+- name: Note where it goes
+  ansible.builtin.set_fact:
+    chromium_dir: "{{ browser_checks_browsers }}/chromium_headless_shell-{{ chromium_revision }}"
+    chromium_executable: >-
+      {{ browser_checks_browsers }}/chromium_headless_shell-{{ chromium_revision }}/{{ pins_chromium[chromium_version].executable }}
+
+- name: Look for it
+  ansible.builtin.stat:
+    path: "{{ chromium_dir }}/.textbookimprover-ansible"
+  register: chromium_installed
+
+- name: Install the Chromium
+  when: not chromium_installed.stat.exists
+  block:
+    - name: Download it, refused unless its SHA-256 matches
+      ansible.builtin.get_url:
+        url: "{{ pins_chromium[chromium_version].url }}"
+        dest: "{{ ti_cache_dir }}/chrome-headless-shell-{{ chromium_version }}-linux64.zip"
+        checksum: "sha256:{{ pins_chromium[chromium_version].sha256 }}"
+        mode: "0644"
+
+    - name: Make its folder
+      ansible.builtin.file:
+        path: "{{ chromium_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Unpack it
+      ansible.builtin.unarchive:
+        src: "{{ ti_cache_dir }}/chrome-headless-shell-{{ chromium_version }}-linux64.zip"
+        dest: "{{ chromium_dir }}"
+        remote_src: true
+
+    # Playwright takes a browser folder with this file in it for one it
+    # finished installing, and its own clean-up removes one without it.
+    - name: Mark it installed, as Playwright does
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ chromium_dir }}/INSTALLATION_COMPLETE"
+        mode: "0644"
+
+    - name: Mark it as this collection's
+      ansible.builtin.copy:
+        content: "Chromium {{ chromium_version }}, for Playwright {{ playwright_version }}\n"
+        dest: "{{ chromium_dir }}/.textbookimprover-ansible"
+        mode: "0644"
+
+# Playwright keeps the browsers some installed Playwright asks for, which it
+# knows by a file in .links named by the SHA-1 of that Playwright's driver
+# folder, holding the folder's path, and removes the rest when it next
+# installs a browser.
+- name: Make the folder for that
+  ansible.builtin.file:
+    path: "{{ browser_checks_browsers }}/.links"
+    state: directory
+    mode: "0755"
+
+- name: Tell Playwright's clean-up that this Playwright uses it
+  ansible.builtin.copy:
+    content: "{{ browser_checks_driver.stdout }}"
+    dest: "{{ browser_checks_browsers }}/.links/{{ browser_checks_driver.stdout | hash('sha1') }}"
+    mode: "0644"
+
+- name: Find Chromiums this collection installed for other Playwrights
+  ansible.builtin.find:
+    paths: "{{ browser_checks_browsers }}"
+    patterns: .textbookimprover-ansible
+    hidden: true
+    recurse: true
+    depth: 2
+  register: browser_checks_ours
+
+- name: Remove them
+  ansible.builtin.file:
+    path: "{{ item.path | dirname }}"
+    state: absent
+  loop: "{{ browser_checks_ours.files }}"
+  when: item.path | dirname != chromium_dir
+  loop_control:
+    label: "{{ item.path | dirname }}"

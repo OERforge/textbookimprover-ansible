@@ -19,7 +19,7 @@ What's known about each distribution the collection supports or may support, and
 - **Python**: 3.14.4, with the same five packages from `apt` importing (measured 2026-11-19). ansible-core 2.20.1 warns when it has to discover the Python itself, so the playbooks name `/usr/bin/python3`.
 - **bindep's platform atoms** (`ubuntu`, `ubuntu-resolute`, `ubuntu-26`, `ubuntu-26.04`, `dpkg`, `base-py3`) are the lookup plugin's from Ansible's facts (measured 2026-11-19, bindep 2.14.0).
 - **Java**: OpenJDK 17, 21, and 25 (measured 2026-11-13).
-- **Node**: 22.22.1 (measured 2026-11-14), so `nodejs` and `npm` come from `apt`.
+- **Node**: 22.22.1, but `npm` 9.2.0, older than the 10 Ace asks for, and `apt install nodejs npm` would install 382 packages (measured 2026-11-20). So Node comes from its own release, as on 24.04.
 - **TeX Live** from `apt` is 2025's (measured 2026-11-13), still too old.
 - **bubblewrap** 0.11.1, in `main`; the `apparmor` package itself installs `bwrap-userns-restrict` in `/etc/apparmor.d/` (read in the packages, 2026-11-19).
 
@@ -31,10 +31,18 @@ Measured 2026-11-19 on 13.7, built with `debootstrap --variant=minbase` from `de
 - **ansible-core**: 2.19.11, from `apt`.
 - **Python**: 3.13.5.
 - **Java**: OpenJDK 21 (21.0.12), and 25; not 17 (read). Hence `openjdk-21-jre-headless` in `bindep.txt`.
-- **Node**: 20.19.2 with Debian's security updates, so `nodejs` and `npm` come from `apt`.
+- **Node**: 20.19.2 with Debian's security updates, but `npm` 9.2.0, and `apt install nodejs npm` would install 382 packages (measured 2026-11-20). So Node comes from its own release.
 - **`gpgv`**: not installed with `apt`, which checks the archive with Sequoia's `sqv` on Debian 13; Ubuntu's `apt` still brings `gpgv`. Hence `gpgv [platform:dpkg]` in `bindep.txt`, since the roles check signatures with it.
 - **User namespaces**: not restricted by AppArmor as Ubuntu restricts them, by default (read).
 - **WSL**: not yet tried (`wsl --install Debian`).
+
+## The browser checks, on all three
+
+Measured 2026-11-20 with Playwright 1.65.2 and its headless Chromium 159.0.8154.6, in containers of each release.
+
+- **Playwright's driver** is a Node binary of its own, which needs `libatomic1`; a minimal image lacks it, and nothing starts without it ("libatomic.so.1: cannot open shared object file").
+- **Playwright's platform names**: `ubuntu24.04-x64`, `ubuntu26.04-x64`, and `debian13-x64`, each officially supported by 1.65.2. Its lists of packages for the headless Chromium are the same on the three, but that Debian's has no `xfonts-cyrillic`; `bindep.txt` has them, less Xvfb, which only a browser with a window uses.
+- **Chromium's sandbox**: in a container under Docker's default seccomp profile, neither Chromium's sandbox nor the check's own namespaces start ("unshare: Operation not permitted"), and `--wcag` says so and goes on; with `--security-opt seccomp=unconfined --security-opt apparmor=unconfined`, on 24.04, both started. Not yet tried on a machine running Ubuntu itself, where AppArmor restricts unprivileged user namespaces.
 
 ## The Red Hat family, later
 

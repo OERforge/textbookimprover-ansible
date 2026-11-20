@@ -1,0 +1,7 @@
+galaxy_info:
+  author: TextbookImprover's contributors
+  description: Playwright and its headless Chromium for --wcag, and DAISY's Ace on Node, in the user's home, every download checked.
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies:
+  - role: oerforge.textbookimprover.base

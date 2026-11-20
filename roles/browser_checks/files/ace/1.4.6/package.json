@@ -1,0 +1,7 @@
+{
+  "name": "textbookimprover-ace",
+  "private": true,
+  "dependencies": {
+    "@daisy/ace": "1.4.6"
+  }
+}

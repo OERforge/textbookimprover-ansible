@@ -1,0 +1,56 @@
+- name: Make Ace's folder
+  ansible.builtin.file:
+    path: "{{ ace_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Copy the package list and its lock file
+  ansible.builtin.copy:
+    src: ace/{{ ace_version }}/{{ item }}
+    dest: "{{ ace_dir }}/{{ item }}"
+    mode: "0644"
+  loop: [package.json, package-lock.json]
+  register: ace_lock
+
+- name: Look for Ace
+  ansible.builtin.stat:
+    path: "{{ ace_dir }}/.textbookimprover-ansible"
+  register: ace_installed
+
+# npm ci installs exactly what the lock file lists, refusing a package whose
+# SHA-512 differs. Its only install scripts are Puppeteer's and Electron's,
+# which download browsers Ace is to do without: it uses Playwright's.
+- name: Install Ace's packages, refused unless each one's SHA-512 matches
+  when: ace_lock.changed or not ace_installed.stat.exists
+  block:
+    - name: Forget the earlier install, so a failed one is tried again
+      ansible.builtin.file:
+        path: "{{ ace_dir }}/.textbookimprover-ansible"
+        state: absent
+
+    - name: Install them
+      ansible.builtin.command:
+        argv:
+          - "{{ node_dir }}/bin/npm"
+          - ci
+          - --ignore-scripts
+          - --omit=dev
+          - --no-audit
+          - --no-fund
+          - --loglevel=error
+        chdir: "{{ ace_dir }}"
+      environment:
+        PATH: "{{ node_dir }}/bin:{{ ansible_facts['env']['PATH'] }}"
+      changed_when: true
+
+    - name: Mark them installed
+      ansible.builtin.copy:
+        content: "Ace {{ ace_version }}\n"
+        dest: "{{ ace_dir }}/.textbookimprover-ansible"
+        mode: "0644"
+
+- name: Link ace-puppeteer where the shell finds it
+  ansible.builtin.file:
+    src: "{{ ace_dir }}/node_modules/@daisy/ace/bin/ace-puppeteer.js"
+    dest: "{{ ti_bin_dir }}/ace-puppeteer"
+    state: link

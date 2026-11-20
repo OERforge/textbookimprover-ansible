@@ -3,8 +3,9 @@
 # this collection's lookup plugin, oerforge.textbookimprover.bindep.
 #
 # Profiles: default (converting a book), pdf, validators, browser, slides,
-# test. Pandoc, TinyTeX, epubcheck, the Nu checker, and veraPDF come from
-# their own projects, not from a package manager, so they aren't here.
+# test. Pandoc, TinyTeX, epubcheck, the Nu checker, veraPDF, Playwright and
+# its Chromium, Node, and Ace come from their own projects, not from a
+# package manager, so they aren't here.
 #
 # The RPM lines are from package indexes and haven't been installed; the Red
 # Hat family isn't supported yet (notes/PLATFORMS.md).
@@ -49,11 +50,45 @@ python3-pikepdf [platform:dpkg pdf]
 openjdk-21-jre-headless [platform:dpkg validators]
 java-21-openjdk-headless [platform:rpm validators]
 
-# --wcag's browser, in a virtual environment, and Ace's Node where the
-# distribution's is 20 or later (Ubuntu 24.04's is 18)
+# --wcag's browser: Playwright in a virtual environment, the Node that
+# Playwright's driver brings needing libatomic1, and the libraries and fonts
+# Playwright's own list gives its headless Chromium (playwright install-deps),
+# less Xvfb, which a headless browser doesn't use. Node for Ace comes from
+# Node's own release: the distributions' npm is 9.2, where Ace asks for 10.
 python3-venv [platform:dpkg browser]
-nodejs [browser platform:ubuntu-26.04 platform:debian-13]
-npm [browser platform:ubuntu-26.04 platform:debian-13]
+libatomic1 [platform:dpkg browser]
+libasound2t64 [platform:dpkg browser]
+libatk-bridge2.0-0t64 [platform:dpkg browser]
+libatk1.0-0t64 [platform:dpkg browser]
+libatspi2.0-0t64 [platform:dpkg browser]
+libcairo2 [platform:dpkg browser]
+libcups2t64 [platform:dpkg browser]
+libdbus-1-3 [platform:dpkg browser]
+libdrm2 [platform:dpkg browser]
+libgbm1 [platform:dpkg browser]
+libglib2.0-0t64 [platform:dpkg browser]
+libnspr4 [platform:dpkg browser]
+libnss3 [platform:dpkg browser]
+libpango-1.0-0 [platform:dpkg browser]
+libx11-6 [platform:dpkg browser]
+libxcb1 [platform:dpkg browser]
+libxcomposite1 [platform:dpkg browser]
+libxdamage1 [platform:dpkg browser]
+libxext6 [platform:dpkg browser]
+libxfixes3 [platform:dpkg browser]
+libxkbcommon0 [platform:dpkg browser]
+libxrandr2 [platform:dpkg browser]
+libfontconfig1 [platform:dpkg browser]
+libfreetype6 [platform:dpkg browser]
+fonts-noto-color-emoji [platform:dpkg browser]
+fonts-unifont [platform:dpkg browser]
+fonts-liberation [platform:dpkg browser]
+fonts-ipafont-gothic [platform:dpkg browser]
+fonts-wqy-zenhei [platform:dpkg browser]
+fonts-tlwg-loma-otf [platform:dpkg browser]
+fonts-freefont-ttf [platform:dpkg browser]
+xfonts-scalable [platform:dpkg browser]
+xfonts-cyrillic [browser platform:ubuntu]
 
 # Decks saved as ODP or PowerPoint 97-2003
 libreoffice-impress [slides]

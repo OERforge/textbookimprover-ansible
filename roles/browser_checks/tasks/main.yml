@@ -1,0 +1,110 @@
+- name: Install the libraries and fonts the browser needs
+  tags: [system]
+  become: true
+  ansible.builtin.apt:
+    name: "{{ query('oerforge.textbookimprover.bindep', profiles=['browser']) }}"
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+
+- name: Install the browser checks
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  vars:
+    pins_playwright: "{{ (ti_pins.playwright | default({})) | combine(playwright_pins) }}"
+    pins_greenlet: "{{ (ti_pins.greenlet | default({})) | combine(greenlet_pins) }}"
+    pins_chromium: "{{ (ti_pins.chromium | default({})) | combine(chromium_pins) }}"
+    pins_node: "{{ (ti_pins.node | default({})) | combine(node_pins) }}"
+    node_dir: "{{ ti_opt_dir }}/node-v{{ node_version }}-linux-x64"
+    ace_dir: "{{ ti_opt_dir }}/ace-{{ ace_version }}"
+  block:
+    - name: Read the pinned checksums
+      ansible.builtin.include_vars: pins.yml
+
+    - name: Stop on a version with no pinned checksum
+      ansible.builtin.assert:
+        that:
+          - playwright_version in pins_playwright
+          - pins_playwright[playwright_version].greenlet in pins_greenlet
+          - not browser_checks_ace | bool or node_version in pins_node
+          - not browser_checks_ace | bool or (role_path ~ '/files/ace/' ~ ace_version ~ '/package-lock.json') is exists
+        fail_msg: >-
+          A version here has no pins (Playwright {{ playwright_version }}, Node
+          {{ node_version }}, Ace {{ ace_version }}). Give ones you trust in the inventory,
+          as ti_pins: {playwright: {"<version>": {wheel: <sha256>, greenlet: "<version>"}},
+          greenlet: {"<version>": [<sha256>, ...]}, node: {"<version>": {sha256: <sha256>,
+          signer: <fingerprint>}}}. Ace is known only at the versions in files/ace/; set
+          browser_checks_ace to false for none.
+        quiet: true
+
+    - name: Install Playwright and its Chromium
+      ansible.builtin.import_tasks: playwright.yml
+
+    - name: Install Node and Ace
+      when: browser_checks_ace | bool
+      block:
+        - name: Install Node
+          ansible.builtin.import_tasks: node.yml
+
+        - name: Install Ace
+          ansible.builtin.import_tasks: ace.yml
+
+    - name: Tell TextbookImprover where they are
+      ansible.builtin.blockinfile:
+        path: "{{ ti_shell_rc }}"
+        create: true
+        mode: "0644"
+        marker: "# {mark} textbookimprover-ansible: browser checks"
+        block: |
+          export PLAYWRIGHT_BROWSERS_PATH="{{ browser_checks_browsers }}"
+          {% if browser_checks_venv_on_path | bool %}
+          case ":$PATH:" in
+            *":{{ browser_checks_venv }}/bin:"*) ;;
+            *) export PATH="{{ browser_checks_venv }}/bin:$PATH" ;;
+          esac
+          {% endif %}
+          {% if browser_checks_ace | bool %}
+          export PUPPETEER_EXECUTABLE_PATH="{{ chromium_executable }}"
+          {% endif %}
+
+    - name: Open a page in the browser
+      ansible.builtin.command:
+        argv:
+          - "{{ browser_checks_venv }}/bin/python"
+          - -I
+          - -c
+          - |
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                page = browser.new_page()
+                page.set_content("<p id=probe>probe</p>")
+                print(browser.version, page.inner_text("#probe"))
+                browser.close()
+      environment:
+        PLAYWRIGHT_BROWSERS_PATH: "{{ browser_checks_browsers }}"
+      register: browser_checks_launch
+      changed_when: false
+
+    - name: Check that it's the browser installed
+      ansible.builtin.assert:
+        that: browser_checks_launch.stdout == chromium_version ~ ' probe'
+        fail_msg: "Playwright's Chromium said {{ browser_checks_launch.stdout | truncate(200) }}, not {{ chromium_version }}."
+        success_msg: "Playwright {{ playwright_version }}'s Chromium {{ chromium_version }} opened a page."
+
+    - name: Ask Ace its version
+      when: browser_checks_ace | bool
+      ansible.builtin.command:
+        argv: ["{{ ti_bin_dir }}/ace-puppeteer", --version]
+      environment:
+        PATH: "{{ node_dir }}/bin:{{ ansible_facts['env']['PATH'] }}"
+      register: browser_checks_ace_said
+      changed_when: false
+
+    - name: Check that it's the Ace installed
+      when: browser_checks_ace | bool
+      ansible.builtin.assert:
+        that: browser_checks_ace_said.stdout | trim == ace_version
+        fail_msg: "ace-puppeteer says {{ browser_checks_ace_said.stdout | truncate(200) }}, not {{ ace_version }}."
+        success_msg: "Ace {{ ace_version }} on Node {{ node_version }}."

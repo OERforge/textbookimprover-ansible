@@ -8,7 +8,7 @@
 #
 # Optional, in the environment:
 #   TI_TEST_CA       a file of CA certificates to trust, for a network whose
-#                    proxy inspects HTTPS
+#                    proxy inspects HTTPS (given to Node and pip as well)
 #   TI_TEST_SOURCES  an apt sources file to use in place of the image's
 #   TI_TEST_BINDEP   a folder holding bindep and its dependencies, to run
 #                    tests/unit/test_bindep.py against this host
@@ -47,6 +47,10 @@ if [ -n "${TI_TEST_CA:-}" ]; then
     mkdir -p /usr/local/share/ca-certificates
     awk '/BEGIN CERTIFICATE/ {n++} n {print > ("/usr/local/share/ca-certificates/test-ca-" n ".crt")}' \
         "$TI_TEST_CA"
+    # Node and pip may keep lists of their own; give them the system's, which
+    # update-ca-certificates makes below.
+    proxy_env+=(NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+                PIP_CERT=/etc/ssl/certs/ca-certificates.crt)
 fi
 
 say "ansible-core from apt"
@@ -113,6 +117,16 @@ as_tester bash -ic 'echo "T=$T"; command -v pandoc; pandoc --version | head -1;
     [ -n "${EPUBCHECK_JAR:-}" ] && java -jar "$EPUBCHECK_JAR" --version 2>&1 | head -1
     [ -n "${VNU_JAR:-}" ] && echo "vnu $(java -jar "$VNU_JAR" --version 2>&1)"
     [ -n "${VERAPDF:-}" ] && "$VERAPDF" --version 2>&1 | head -1
+    for v in PLAYWRIGHT_BROWSERS_PATH PUPPETEER_EXECUTABLE_PATH; do
+        [ -n "${!v:-}" ] && echo "$v=${!v}"
+    done
+    if [ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ]; then
+        command -v python3; python3 -m playwright --version
+        if command -v ace-puppeteer >/dev/null; then
+            command -v node; node --version; echo "ace $(ace-puppeteer --version)"
+        fi
+        python3 "$T/bin/check-output.py" --wcag 2>&1 | grep -E "axe-core|Ace|sandbox|network"
+    fi
     true' 2>/dev/null
 { grep -h -A4 "Check that it.s recent enough" /tmp/first.log | grep -o "LaTeX [0-9-]*" | head -1; } || true
 

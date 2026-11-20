@@ -1,0 +1,32 @@
+# What --wcag checks pages, presentations, and EPUBs with: Playwright and its
+# headless Chromium, in which axe-core runs, and DAISY's Ace, which runs on
+# Node. Each download is checked before it's used: Playwright's wheels by
+# pip's --require-hashes, its Chromium and Node's tarball against their
+# SHA-256 in vars/pins.yml (Node's also against Node's signed checksums), and
+# Ace's packages by npm against the SHA-512 in the lock file kept here. A
+# version the collection has no pin for needs its pins in the inventory, as
+# ti_pins.playwright, ti_pins.chromium, or ti_pins.node.
+
+# Playwright, from PyPI into a virtual environment that sees the system's
+# Python packages too, as the installation page has it. The tools run with
+# its Python for --wcag, so its bin folder goes first on PATH unless
+# browser_checks_venv_on_path is false.
+playwright_version: "1.65.2"
+browser_checks_venv: "{{ ti_opt_dir }}/textbookimprover-venv"
+browser_checks_venv_on_path: true
+
+# Where Playwright keeps its browsers, named by PLAYWRIGHT_BROWSERS_PATH.
+# The Chromium is the one the Playwright version asks for, its archive
+# fetched and checked here, not by Playwright, which checks only a
+# download's length.
+browser_checks_browsers: "{{ ti_opt_dir }}/ms-playwright"
+
+# Node from its own release, for Ace: the distributions' npm is older than
+# Ace asks for.
+node_version: "26.13.1"
+node_release_url: https://nodejs.org/dist
+
+# Ace by DAISY, installed with npm ci from files/ace/<version>/, whose lock
+# file gives every package's SHA-512. False leaves Ace and Node out.
+ace_version: "1.4.6"
+browser_checks_ace: true
