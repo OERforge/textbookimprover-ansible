@@ -18,6 +18,7 @@ repository: https://github.com/OERforge/textbookimprover-ansible
 issues: https://github.com/OERforge/textbookimprover-ansible/issues
 build_ignore:
   - tests
+  - util
   - "*.mbox"
   # Secrets, as in .gitignore, which ansible-galaxy doesn't read. A pattern
   # is matched against the path from the top, and its * matches a slash too,

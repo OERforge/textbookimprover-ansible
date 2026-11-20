@@ -15,6 +15,7 @@ if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 #   secrets     tests/check-secrets.py: python3 and git
 #   bindep      tests/unit/test_bindep.py: bindep importable by python3, or a
 #               folder holding it named by TI_TEST_BINDEP
+#   pins        tests/unit/test_update_pins.py: python3 and PyYAML
 #   lint        ansible-lint on PATH (run offline, at its production profile)
 #   shell       dash and shellcheck on PATH, for bootstrap.sh, which is POSIX sh
 #   containers  tests/run-scenarios.sh: Docker, and the network
@@ -84,6 +85,15 @@ elif ! PYTHONPATH=$bindep_path python3 -c 'import bindep.depends' >/dev/null 2>&
     skip bindep "python3 can't import bindep; pip install bindep, or name a folder holding it in TI_TEST_BINDEP"
 else
     run bindep env PYTHONPATH="$bindep_path" python3 "$here/tests/unit/test_bindep.py"
+fi
+
+# pins: util/update-pins.py's parts that need no network
+if ! have python3; then
+    skip pins "no python3"
+elif ! python3 -c 'import yaml' >/dev/null 2>&1; then
+    skip pins "python3 can't import yaml; apt install python3-yaml"
+else
+    run pins python3 "$here/tests/unit/test_update_pins.py"
 fi
 
 # lint: ansible-lint wants the collection where Ansible would find it, so it

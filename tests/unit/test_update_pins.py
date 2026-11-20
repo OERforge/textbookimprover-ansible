@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""util/update-pins.py's parts that need no network, on a copy of the
+roles: where a new pin goes, that a pin is never replaced, how a default is
+set, and how versions are ordered. Needs PyYAML."""
+
+import importlib.util
+import os
+import shutil
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+TOP = os.path.dirname(os.path.dirname(HERE))
+
+spec = importlib.util.spec_from_file_location("update_pins", os.path.join(TOP, "util", "update-pins.py"))
+up = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(up)
+
+failures = 0
+
+
+def check(what, ok):
+    global failures
+    print(("ok   " if ok else "FAIL ") + what)
+    failures += not ok
+
+
+def stops(call):
+    try:
+        call()
+    except up.Stop:
+        return True
+    return False
+
+
+with tempfile.TemporaryDirectory() as scratch:
+    shutil.copytree(os.path.join(TOP, "roles"), os.path.join(scratch, "roles"))
+    up.ROLES = os.path.join(scratch, "roles")
+    path = up.role_file("pandoc", "vars", "pins.yml")
+    before = open(path, encoding="utf-8").read()
+    pinned = up.pins("pandoc")["pandoc_pins"]["3.14"]
+
+    up.settle("pandoc", "pandoc_pins", "3.15", "ab" * 32, single="ab" * 32)
+    after = open(path, encoding="utf-8").read()
+    check("a new pin goes first under its map, and nothing else changes",
+          after == before.replace('pandoc_pins:\n', 'pandoc_pins:\n  "3.15": ' + "ab" * 32 + "\n", 1))
+    check("and reads back", up.pins("pandoc")["pandoc_pins"]["3.15"] == "ab" * 32)
+
+    up.settle("pandoc", "pandoc_pins", "3.14", pinned, single=pinned)
+    check("a pin already there that matches is left as it is",
+          open(path, encoding="utf-8").read() == after)
+    check("a pin is never replaced: a different value stops the script",
+          stops(lambda: up.settle("pandoc", "pandoc_pins", "3.14", "cd" * 32, single="cd" * 32))
+          and up.pins("pandoc")["pandoc_pins"]["3.14"] == pinned)
+
+    up.settle("browser_checks", "node_pins", "99.0.0", {"sha256": "ef" * 32, "signer": "F" * 40},
+              ["sha256: " + "ef" * 32, "signer: " + "F" * 40])
+    check("a pin of several fields reads back as a mapping",
+          up.pins("browser_checks")["node_pins"]["99.0.0"] == {"sha256": "ef" * 32, "signer": "F" * 40})
+    up.write_pin("browser_checks", "greenlet_pins", "9.9.9", items=["0a" * 32, "1" * 64])
+    check("a pin of a list reads back as a list, a hash of digits alone as text",
+          up.pins("browser_checks")["greenlet_pins"]["9.9.9"] == ["0a" * 32, "1" * 64])
+    check("a map the file hasn't stops the script",
+          stops(lambda: up.write_pin("pandoc", "no_such_pins", "1", single="x")))
+
+    up.set_default("validators", "vnu_version", "99.1.1")
+    check("a default is set where it's a plain version", up.defaults("validators")["vnu_version"] == "99.1.1")
+    check("and a default the file hasn't stops the script",
+          stops(lambda: up.set_default("validators", "no_such_version", "1")))
+
+check("versions are ordered by their numbers", up.version_key("3.10") > up.version_key("3.9")
+      and up.version_key("v2026.11") > up.version_key("v2026.09"))
+check("only releases count as stable", up.stable("3.14") and up.stable("v0.10")
+      and not up.stable("pandoc-server-0.1.4") and not up.stable("27.0.0-alpha.0"))
+check("the scratch copy was used, not the collection's roles",
+      up.pins.__module__ == "update_pins" and "3.15" not in open(
+          os.path.join(TOP, "roles", "pandoc", "vars", "pins.yml"), encoding="utf-8").read())
+
+sys.exit(1 if failures else 0)

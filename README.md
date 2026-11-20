@@ -117,6 +117,28 @@ Inventories, like keys and passwords, are kept out of the collection's commits a
 
 A release the collection has no checksum or commit for stops the play, which names the variable that adds one (`ti_pins`). A pin given that way can add a version, never replace one the collection has.
 
+## New releases
+
+`util/update-pins.py`, for the collection's maintainers, writes the pins and checks them; the playbooks never run it. It needs Python, PyYAML, `git`, `gpg`, and `gpgv`, and for Ace, npm 10 or later.
+
+```bash
+util/update-pins.py check                       # which releases are newer than the defaults
+util/update-pins.py add vnu 26.11.20 --default  # pin one, and make it the default
+util/update-pins.py verify node 26.13.1         # download a pinned one again and check it
+```
+
+`add` downloads a release and checks it against everything its publisher offers before writing the pin into the role's `vars/pins.yml`, newest first, with the file's comments left as they are:
+
+- **Pandoc, TinyTeX, epubcheck, and uv**: the SHA-256 GitHub computes for each release asset, read from GitHub's API (with `GITHUB_TOKEN` if it's set, since the API allows few requests an hour without one), and uv's own checksum file. Where the API can't be read, it says so, and `--require-github-digest` makes that a failure.
+- **The Nu checker**: npm's SHA-512 of its tarball.
+- **veraPDF**: its signature, with the key in `roles/validators/files/verapdf.asc`, whose fingerprint is checked first. The WCAG modules for a new veraPDF are pinned by hand, as the pins' comment says.
+- **Node**: its `SHASUMS256.txt`'s signature, with the keys in `roles/browser_checks/files/nodejs/`, each file named by its key's fingerprint. A release signed by a key the collection doesn't keep stops it; the key is added from Node's own list of releasers.
+- **Playwright**: PyPI's digests for its wheel and for greenlet's wheels for Python 3.12, 3.13, and 3.14; and the headless Chromium its `browsers.json` names, from Playwright's address, checked against the MD5 Google's bucket gives.
+- **Ace**: a lock file made by npm, in `roles/browser_checks/files/ace/<version>/`, which must have every package from npm's registry with a SHA-512, with the install scripts the role doesn't run named, and with what `npm audit` finds in it.
+- **TextbookImprover**: the commit its release's tag names.
+
+A pin is never replaced: for a version already pinned, `add` and `verify` check the download against the pin, and any difference stops the script. `check --strict` exits 1 when anything is newer, for a scheduled job.
+
 ## Testing
 
 `tests/run-all.sh` runs every check whose needs are met and says which it skipped and why; `--help` lists its options.
@@ -130,6 +152,7 @@ tests/run-all.sh --suites        # and TextbookImprover's suites in each
 The checks, and what each needs:
 
 - **`tests/check-secrets.py`** (Python and git) fails if anything git tracks looks like a key, a vault password, an inventory, or a password or token in plain text, and if `.gitignore` or `galaxy.yml`'s `build_ignore` lets any such name through. It's quick enough to run before each commit.
+- **`tests/unit/test_update_pins.py`** (Python and PyYAML) holds `util/update-pins.py`'s parts that need no network, on a copy of the roles: where a new pin goes, that a pin is never replaced, and how a default is set.
 - **`tests/unit/test_bindep.py`** (bindep importable, or a folder holding it named by `TI_TEST_BINDEP`) holds the lookup plugin to bindep's own answers.
 - **`ansible-lint`**, which passes at its `production` profile; `.ansible-lint` says why one rule is skipped.
 - **The shell check** (`dash` and `shellcheck`): `bootstrap.sh` is POSIX `sh` throughout, since some will start it as `sh bootstrap.sh`, so `dash` has to parse it and ShellCheck has to find nothing in it as `sh`.
