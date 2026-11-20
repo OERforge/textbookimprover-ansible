@@ -2,7 +2,7 @@
 
 Ansible playbooks that set up a machine to use or develop [TextbookImprover](https://github.com/OERforge/textbookimprover): Pandoc, TextbookImprover itself, LuaLaTeX for tagged PDFs, the validators, the browser checks, and the rest of what its [installation page](https://github.com/OERforge/textbookimprover/blob/main/docs/installation.md) asks for.
 
-**Only part of it works yet.** The `user` playbook installs the system packages a book's conversion needs, checks the Python, and installs Pandoc, TeX for a PDF target, the validators, the browser checks, and TextbookImprover; a `developer` playbook adds what working on TextbookImprover needs. `bootstrap.sh` comes next.
+**Only part of it works yet.** The `user` playbook installs the system packages a book's conversion needs, checks the Python, and installs Pandoc, TeX for a PDF target, the validators, the browser checks, and TextbookImprover; a `developer` playbook adds what working on TextbookImprover needs; and `bootstrap.sh` runs either of them with one command. The fonts for OpenStax's books come next.
 
 Licensed MIT. See `LICENSE`.
 
@@ -18,7 +18,23 @@ It's an Ansible collection, `oerforge.textbookimprover`, using only the modules 
 
 ## Running it
 
-Until `bootstrap.sh` does this for you, on the machine to set up:
+On the machine to set up, in a terminal, as the person who'll use TextbookImprover:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/OERforge/textbookimprover-ansible/main/bootstrap.sh
+sh bootstrap.sh
+```
+
+It asks which setup the machine is for, `user` (converting books) or `developer` (working on TextbookImprover), and which optional parts to install: TeX for PDF output, the validators, and the browser checks. Then it asks for your `sudo` password, once, installs `ansible-core` and `git` with `apt` if they're missing, fetches the collection, and runs the playbook on the machine, which can take a while the first time. Open a new terminal afterward ([The shell's settings](#the-shells-settings), below).
+
+Run it again to update everything. `sh bootstrap.sh --user-only` updates what's in your home folder without asking for a password, `--reconfigure` asks the questions again, `--profile` chooses the setup without asking (saved with the answers on the first run or with `--reconfigure`), and options after `--` go to `ansible-playbook`, so `sh bootstrap.sh -- -e tex_update=true` brings TeX up to date as well. `--help` lists the rest. What it keeps, and where:
+
+- **Its answers**, as an inventory in `~/.config/textbookimprover-ansible/inventory/`: the profile in `~/.config/textbookimprover-ansible/profile` and the other answers in the inventory's `group_vars/all/bootstrap.yml`, which `--reconfigure` rewrites. Settings of your own (Settings, below) go in its `host_vars/localhost.yml`, which win over the answers, and which `bootstrap.sh` makes once and never changes.
+- **The collection**, as a clone in `~/.local/share/textbookimprover-ansible/ansible_collections/oerforge/textbookimprover/`, which each run updates, and which it refuses to touch if you've changed anything in it. It runs the playbooks from there and from nowhere else, so a copy of the collection installed elsewhere isn't used; `--collection` names a copy of your own to use as it is. Until the collection has a release, `bootstrap.sh` uses its `main` branch, with nothing to check it against; after, it'll use the newest release it knows and check that the release's tag names the commit it expects, as the `textbookimprover` role does for TextbookImprover.
+
+### By hand
+
+Without `bootstrap.sh`, on the machine to set up:
 
 ```bash
 sudo apt install ansible-core git
@@ -28,13 +44,15 @@ ln -s ~/src/textbookimprover-ansible ~/.ansible/collections/ansible_collections/
 ansible-playbook -i localhost, -c local -K oerforge.textbookimprover.user
 ```
 
-`-K` asks for your `sudo` password, which only the system packages need. Open a new terminal afterward: the play adds blocks to `~/.bashrc` putting `~/.local/bin` and TeX's commands on your `PATH`, setting `T` to TextbookImprover's folder, and setting `EPUBCHECK_JAR`, `VNU_JAR`, `VERAPDF`, and `VERAPDF_WCAG` to the validators, and putting the browser checks' virtual environment first on your `PATH`, so that `python3` is its Python, as the installation page's examples expect. Without a PDF target in mind, `-e ti_tex=false` leaves TeX out; `-e ti_validators=false` leaves out the validators, and `-e ti_browser_checks=false` the browser checks.
-
-To update later without a password, run the user step alone:
+`-K` asks for your `sudo` password, which only the system packages need. Without a PDF target in mind, `-e ti_tex=false` leaves TeX out; `-e ti_validators=false` leaves out the validators, and `-e ti_browser_checks=false` the browser checks. To update later without a password, run the user step alone:
 
 ```bash
 ansible-playbook -i localhost, -c local oerforge.textbookimprover.user --tags user
 ```
+
+### The shell's settings
+
+Open a new terminal after the play: it adds blocks to `~/.bashrc` putting `~/.local/bin` and TeX's commands on your `PATH`, setting `T` to TextbookImprover's folder, and setting `EPUBCHECK_JAR`, `VNU_JAR`, `VERAPDF`, and `VERAPDF_WCAG` to the validators, and putting the browser checks' virtual environment first on your `PATH`, so that `python3` is its Python, as the installation page's examples expect.
 
 The blocks go at the end of `~/.bashrc`, so in a new terminal they take the place of any settings of your own made earlier in it: if you've already set up TextbookImprover by hand, with a virtual environment you activate or `VERAPDF` pointing at a veraPDF of your own, the play's copies are the ones a new terminal finds. Nothing of yours is removed, and activating your own environment afterward still puts it first. To try the playbooks without that, run them as another user made for the purpose.
 
@@ -50,6 +68,8 @@ The `developer` playbook installs everything the `user` playbook does, with thes
 - Python 3.9, which the portability suite compiles with, is installed by uv and linked as `~/.local/bin/python3.9`.
 - OpenStax's cookbook is cloned at the commit TextbookImprover's CNX ports were made from, named by `CNX_COOKBOOK`, which turns on the CNX suite's comparisons with it.
 
+It's `bootstrap.sh`'s second choice, or by hand:
+
 ```bash
 ansible-playbook -i localhost, -c local -K oerforge.textbookimprover.developer
 ```
@@ -58,7 +78,7 @@ Each of these is a default of the `developer` profile, which any setting changes
 
 ### Settings
 
-Every setting can go in an inventory, so that a machine's choices are kept in a file, and `-e` changes any of them for one run. An inventory for the machine itself, kept wherever you like, but outside the collection's folder:
+Every setting can go in an inventory, so that a machine's choices are kept in a file, and `-e` changes any of them for one run. `bootstrap.sh` makes one, whose `host_vars/localhost.yml` is for settings of your own. By hand, an inventory for the machine itself, kept wherever you like, but outside the collection's folder:
 
 ```yaml
 # ~/textbookimprover-machine.yml
@@ -112,6 +132,7 @@ The checks, and what each needs:
 - **`tests/check-secrets.py`** (Python and git) fails if anything git tracks looks like a key, a vault password, an inventory, or a password or token in plain text, and if `.gitignore` or `galaxy.yml`'s `build_ignore` lets any such name through. It's quick enough to run before each commit.
 - **`tests/unit/test_bindep.py`** (bindep importable, or a folder holding it named by `TI_TEST_BINDEP`) holds the lookup plugin to bindep's own answers.
 - **`ansible-lint`**, which passes at its `production` profile; `.ansible-lint` says why one rule is skipped.
-- **`tests/run-scenarios.sh`** (Docker and the network) runs `tests/scenario.sh` in a fresh container of each image in `TI_TEST_IMAGES` (Ubuntu 24.04 and 26.04 if unset; Debian 13 too, given an image of it): it installs `ansible-core` from `apt`, makes an ordinary user with `sudo`, runs the playbook as that user, runs it again to check that nothing changes, and runs the user step with `sudo` taken away. With `--suites` it then runs TextbookImprover's suites as that user, and with `TI_TEST_BINDEP` set it runs the bindep check on each host too. On a network a container reaches only through a proxy, `TI_TEST_PROXY` names it: the container then shares the host's network, and `apt` and the play's downloads go through the proxy, with `TI_TEST_CA` for the certificates it signs with.
+- **The shell check** (`dash` and `shellcheck`): `bootstrap.sh` is POSIX `sh` throughout, since some will start it as `sh bootstrap.sh`, so `dash` has to parse it and ShellCheck has to find nothing in it as `sh`.
+- **`tests/run-scenarios.sh`** (Docker and the network) runs `tests/scenario.sh` in a fresh container of each image in `TI_TEST_IMAGES` (Ubuntu 24.04 and 26.04 if unset; Debian 13 too, given an image of it): it installs `ansible-core` from `apt`, makes an ordinary user with `sudo`, runs the playbook as that user, runs it again to check that nothing changes, and runs the user step with `sudo` taken away. With `--suites` it then runs TextbookImprover's suites as that user, and with `TI_TEST_BINDEP` set it runs the bindep check on each host too. With `TI_TEST_BOOTSTRAP` set, it runs each play through `bootstrap.sh` instead, at a terminal `script` gives it, as a user whose `sudo` asks for a password: `bootstrap.sh` installs `ansible-core` and `git` and fetches the collection from the clone being tested, at the commit checked out there. On a network a container reaches only through a proxy, `TI_TEST_PROXY` names it: the container then shares the host's network, and `apt` and the play's downloads go through the proxy, with `TI_TEST_CA` for the certificates it signs with.
 
 `--no-skip` makes a check that can't run a failure. `notes/PLATFORMS.md` has what's known about each distribution, and how each fact is known.

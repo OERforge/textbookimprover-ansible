@@ -2,9 +2,11 @@
 # One scenario, run as root inside a fresh container of a supported release,
 # with the collection mounted at /collection (tests/run-scenarios.sh starts it).
 #
-# It installs ansible-core from apt, as bootstrap.sh will, makes an ordinary
-# user with sudo, runs a playbook as that user, runs it again to see that
-# nothing changes, then runs the user step alone with sudo taken away.
+# It installs ansible-core from apt, makes an ordinary user with sudo, runs a
+# playbook as that user, runs it again to see that nothing changes, then runs
+# the user step alone with sudo taken away. With TI_TEST_BOOTSTRAP set, it
+# does each of those through bootstrap.sh instead, which installs ansible-core
+# and git itself and is given the user's sudo password at a terminal.
 #
 # Optional, in the environment:
 #   TI_TEST_CA       a file of CA certificates to trust, for a network whose
@@ -17,6 +19,9 @@
 #   TI_TEST_EXTRA    more -e options for every play
 #   TI_TEST_PLAYBOOK the collection's playbook to run: user (the default) or
 #                    developer
+#   TI_TEST_BOOTSTRAP  set to anything, to run the playbook through
+#                    bootstrap.sh, fetching the collection from /collection
+#                    at the commit checked out there
 #   TI_TEST_PROXY    an HTTP proxy for apt and the play's downloads, for a
 #                    container that reaches the network only through one
 #                    (tests/run-scenarios.sh then shares the host's network)
@@ -61,15 +66,32 @@ if [ -n "${TI_TEST_CA:-}" ]; then
                 SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt)
 fi
 
-say "ansible-core from apt"
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends ansible-core sudo ca-certificates >/dev/null
+if [ -n "${TI_TEST_BOOTSTRAP:-}" ]; then
+    say "sudo from apt; bootstrap.sh installs ansible-core and git"
+    apt-get install -y -qq --no-install-recommends sudo ca-certificates >/dev/null
+else
+    say "ansible-core from apt"
+    apt-get install -y -qq --no-install-recommends ansible-core sudo ca-certificates >/dev/null
+    ansible --version | head -1
+fi
 update-ca-certificates >/dev/null 2>&1 || true
-ansible --version | head -1
 
 say "an ordinary user with sudo"
 useradd -m -s /bin/bash tester
-echo 'tester ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tester
+if [ -n "${TI_TEST_BOOTSTRAP:-}" ]; then
+    # A password sudo asks for, as on a machine of one's own; made here, for
+    # this container alone.
+    tester_password=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    printf 'tester:%s\n' "$tester_password" | chpasswd
+    usermod -aG sudo tester
+    # bootstrap.sh fetches the collection from /collection, which another
+    # user owns, so git is told to trust it.
+    printf '[safe]\n\tdirectory = *\n' > ~tester/.gitconfig
+    chown tester: ~tester/.gitconfig
+else
+    echo 'tester ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tester
+fi
 mkdir -p /opt/collections/ansible_collections/oerforge
 ln -s /collection /opt/collections/ansible_collections/oerforge/textbookimprover
 
@@ -78,12 +100,20 @@ as_tester() {
         ANSIBLE_FORCE_COLOR=0 ${proxy_env[@]+"${proxy_env[@]}"} "$@"
 }
 play() {
+    if [ -n "${TI_TEST_BOOTSTRAP:-}" ]; then
+        # At a terminal, which script(1) gives it, typing the password once.
+        printf '%s\n' "$tester_password" |
+            as_tester script -qec \
+                "sh /collection/bootstrap.sh --repository /collection --ref HEAD --yes --profile $playbook $* -- ${TI_TEST_EXTRA:-}" \
+                /dev/null
+        return
+    fi
     # shellcheck disable=SC2086
     as_tester ansible-playbook -i localhost, -c local ${TI_TEST_EXTRA:-} \
         "oerforge.textbookimprover.$playbook" "$@"
 }
 
-if [ -n "${TI_TEST_BINDEP:-}" ]; then
+if [ -n "${TI_TEST_BINDEP:-}" ] && [ -z "${TI_TEST_BOOTSTRAP:-}" ]; then
     say "the bindep lookup against bindep itself, on this host"
     cat > /tmp/facts.yml <<'PLAY'
 - hosts: all
@@ -99,19 +129,34 @@ PLAY
     PYTHONPATH="$TI_TEST_BINDEP" python3 /collection/tests/unit/test_bindep.py /tmp/facts.json
 fi
 
+# The play's last lines, or through bootstrap.sh, which says more after them,
+# its recap.
+ending() {
+    if [ -n "${TI_TEST_BOOTSTRAP:-}" ]; then
+        sed -n '/PLAY RECAP/{n;p;}'
+    else
+        tail -4
+    fi
+}
+
 say "the $playbook playbook, first run"
 play | tee /tmp/first.log | tail -25
 
 say "the $playbook playbook, second run: nothing should change"
-play | tee /tmp/second.log | tail -4
+play | tee /tmp/second.log | ending
 if ! grep -Eq 'changed=0 +unreachable=0 +failed=0' /tmp/second.log; then
     echo "FAIL: the second run changed something"
     exit 1
 fi
 
 say "the user step alone, with sudo taken away"
-rm /etc/sudoers.d/tester
-play --tags user | tail -4
+if [ -n "${TI_TEST_BOOTSTRAP:-}" ]; then
+    gpasswd -d tester sudo >/dev/null
+    play --user-only | ending
+else
+    rm /etc/sudoers.d/tester
+    play --tags user | ending
+fi
 
 say "what the user's shell has"
 as_tester bash -ic 'echo "T=$T"; command -v pandoc; pandoc --version | head -1;

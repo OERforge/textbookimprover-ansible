@@ -16,11 +16,12 @@ if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 #   bindep      tests/unit/test_bindep.py: bindep importable by python3, or a
 #               folder holding it named by TI_TEST_BINDEP
 #   lint        ansible-lint on PATH (run offline, at its production profile)
+#   shell       dash and shellcheck on PATH, for bootstrap.sh, which is POSIX sh
 #   containers  tests/run-scenarios.sh: Docker, and the network
 #
 # TI_TEST_IMAGES is "ubuntu:24.04 ubuntu:26.04" if unset. Everything else
 # tests/scenario.sh reads (TI_TEST_CA, TI_TEST_SOURCES, TI_TEST_BINDEP,
-# TI_TEST_EXTRA) is passed on to the containers as it is.
+# TI_TEST_EXTRA, TI_TEST_BOOTSTRAP) is passed on to the containers as it is.
 set -u
 here=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -102,6 +103,19 @@ if ! have ansible-lint; then
     skip lint "no ansible-lint on PATH; pipx install ansible-lint"
 else
     run lint lint
+fi
+
+# shell: bootstrap.sh is POSIX sh throughout, so dash, which is Debian's and
+# Ubuntu's sh, has to parse it, and ShellCheck finds nothing in it as sh.
+shell_check() {
+    dash -n "$here/bootstrap.sh" && shellcheck -s sh "$here/bootstrap.sh"
+}
+if ! have dash; then
+    skip shell "no dash; apt install dash"
+elif ! have shellcheck; then
+    skip shell "no shellcheck on PATH; apt install shellcheck, or pipx install shellcheck-py"
+else
+    run shell shell_check
 fi
 
 # containers

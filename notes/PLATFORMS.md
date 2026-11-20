@@ -54,6 +54,14 @@ Measured 2026-11-20 in containers of each release.
 - **TeX Live's mirror**: CTAN's mirror service (`mirror.ctan.org`) sends each request to a mirror near the asker, a different one from one request to the next, so a network that allows only named hosts needs `tex_repository` set to one it allows.
 - **TextbookImprover's suites** at `main` (459273a) on 26.04 with the full TeX Live: all passed, with one skip, `setpriv` as root, which only a run as root can check.
 
+## `bootstrap.sh`, on all three
+
+Measured 2026-11-20 in containers of each release, starting from a minimal image with `sudo` and `ca-certificates` and nothing else of what it needs.
+
+- **ansible-core and git from `apt`**, with `--no-install-recommends`: then the `user` playbook, with everything on, made 59 changes on each release and none on the second run or with `--user-only`, and the `developer` playbook on Ubuntu 26.04 70 and then none, as from a hand-typed command; on Ubuntu 24.04, TextbookImprover's suites passed afterward with the 16 skips of what the `user` profile leaves out. Run as a user whose `sudo` asks for a password, at a terminal `script` gave it, it asked once; as a user whose `sudo` needs none, with no terminal, it asked nothing.
+- **The password on standard input**: ansible-core reads `--become-password-file -` from standard input and trims only the line's end, in 2.16.3 as in 2.22.0 (read in each one's source). Given `/dev/stdin` instead, 2.16.3 resolves the path to the pipe's name under `/proc` and stops, saying there's no such file (measured on Ubuntu 24.04).
+- **Telling whether `sudo` needs a password**: `sudo -k -n true` succeeds where it needs none and fails where it needs one (measured on Ubuntu 24.04 and 26.04), and `-k` sets aside a password given moments before in the same terminal, which would otherwise make it succeed (read in `sudo`'s manual). An account that isn't allowed to use `sudo` is told so once its password is given (`… is not in the sudoers file`, measured on Ubuntu 26.04).
+
 ## The Red Hat family, later
 
 Read, not installed, except where it says so.
