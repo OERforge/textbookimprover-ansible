@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """util/update-pins.py's parts that need no network, on a copy of the
 roles: where a new pin goes, that a pin is never replaced, how a default is
-set, and how versions are ordered. Needs PyYAML."""
+set, how versions are ordered, and that a token isn't sent on where a
+redirect points (with two servers of its own on 127.0.0.1). Needs PyYAML."""
 
+import http.server
 import importlib.util
 import os
 import shutil
 import sys
 import tempfile
+import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOP = os.path.dirname(os.path.dirname(HERE))
@@ -75,5 +78,49 @@ check("only releases count as stable", up.stable("3.14") and up.stable("v0.10")
 check("the scratch copy was used, not the collection's roles",
       up.pins.__module__ == "update_pins" and "3.15" not in open(
           os.path.join(TOP, "roles", "pandoc", "vars", "pins.yml"), encoding="utf-8").read())
+
+
+
+# A server that redirects, and one it redirects to, each noting what it got.
+seen = {}
+
+
+def server(name, answer):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen[name] = self.headers.get("Authorization")
+            answer(self)
+
+        def log_message(self, *args):
+            pass
+    s = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    return s
+
+
+def landing(handler):
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/json")
+    handler.end_headers()
+    handler.wfile.write(b"{}")
+
+
+there = server("there", landing)
+
+
+def redirect(handler):
+    handler.send_response(302)
+    handler.send_header("Location", f"http://127.0.0.1:{there.server_port}/")
+    handler.end_headers()
+
+
+here = server("here", redirect)
+os.environ["no_proxy"] = os.environ["NO_PROXY"] = "127.0.0.1"
+up.fetch_json(f"http://127.0.0.1:{here.server_port}/", {"Accept": "application/json"},
+              {"Authorization": "Bearer t0ken"})
+check("a token goes to the address asked", seen.get("here") == "Bearer t0ken")
+check("and not on to where it redirects", "there" in seen and seen["there"] is None)
+here.shutdown()
+there.shutdown()
 
 sys.exit(1 if failures else 0)

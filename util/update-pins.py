@@ -18,7 +18,8 @@ pinned version without adding anything. With --default, "add" also makes
 the version the role's default, where the default is a plain version.
 
 Downloads go into a temporary folder that's removed afterward. GITHUB_TOKEN,
-if set, is sent to GitHub's API, which otherwise allows few requests an hour.
+if set, is sent to GitHub's API, which otherwise allows few requests an hour,
+and nowhere else, not even where the API redirects.
 Only the standard library is needed, and PyYAML to read the pins back;
 "add ace" needs npm 10 or later; signatures need gpg and gpgv.
 """
@@ -84,8 +85,12 @@ def stable(text):
 
 # --- Downloads.
 
-def fetch(url, headers=None):
+def fetch(url, headers=None, secret=None):
+    """The body and headers. A secret header is never sent on to where a
+    redirect points, as urllib sends the others."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
+    for name, value in (secret or {}).items():
+        request.add_unredirected_header(name, value)
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             return response.read(), response.headers
@@ -95,8 +100,8 @@ def fetch(url, headers=None):
         raise Stop(f"{url}: {e.reason}") from e
 
 
-def fetch_json(url, headers=None):
-    return json.loads(fetch(url, headers)[0])
+def fetch_json(url, headers=None, secret=None):
+    return json.loads(fetch(url, headers, secret)[0])
 
 
 def download(url, folder):
@@ -139,10 +144,12 @@ def git_tags(repository):
 def github_digest(owner_repo, tag, name):
     """The SHA-256 GitHub computed for a release asset, or None and why."""
     headers = {"Accept": "application/vnd.github+json"}
+    secret = {}
     if os.environ.get("GITHUB_TOKEN"):
-        headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
+        secret["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
     try:
-        release = fetch_json(f"https://api.github.com/repos/{owner_repo}/releases/tags/{tag}", headers)
+        release = fetch_json(f"https://api.github.com/repos/{owner_repo}/releases/tags/{tag}",
+                             headers, secret)
     except Stop as e:
         return None, str(e)
     for asset in release.get("assets", []):
