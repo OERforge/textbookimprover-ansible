@@ -5,6 +5,9 @@ __pycache__/
 # Ansible's retry files
 *.retry
 
+# ansible-lint's copy of the collection, made in the folder it's run in
+.ansible/
+
 # Secrets, kept out in case one is copied into a clone: keys, vault passwords,
 # tokens, and inventories, which hold hosts and their passwords. The collection
 # ships no inventory. tests/check-secrets.py checks that galaxy.yml's

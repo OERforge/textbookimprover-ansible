@@ -20,6 +20,7 @@ build_ignore:
   - tests
   - util
   - "*.mbox"
+  - .ansible
   # Secrets, as in .gitignore, which ansible-galaxy doesn't read. A pattern
   # is matched against the path from the top, and its * matches a slash too,
   # so each name is given alone and under a folder.
