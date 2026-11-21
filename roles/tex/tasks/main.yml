@@ -12,8 +12,6 @@
   become: "{{ ti_user != ansible_facts['user_id'] }}"
   become_user: "{{ ti_user }}"
   vars:
-    tex_root: "{{ ti_home ~ '/.TinyTeX' if tex_distribution == 'tinytex' else texlive_dir }}"
-    tex_bin: "{{ tex_root }}/bin/x86_64-linux"
     tex_tlmgr: "{{ tex_bin }}/tlmgr"
     # Written once a TinyTeX has been brought up to date, or a TeX Live
     # installed, so that a run that stopped partway finishes the job.

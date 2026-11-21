@@ -47,7 +47,7 @@
 
 - name: Install the packages not there yet
   vars:
-    tex_missing: "{{ (tex_packages + tex_extra_packages) | unique | difference(tex_installed_packages.stdout_lines) }}"
+    tex_missing: "{{ (tex_packages + tex_extra_packages + tex_font_packages) | unique | difference(tex_installed_packages.stdout_lines) }}"
   when: tex_missing | length > 0
   block:
     - name: Check that tlmgr can verify the repository, changing nothing

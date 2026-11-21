@@ -1,0 +1,240 @@
+- name: Read the pinned checksums
+  tags: [user]
+  ansible.builtin.include_vars: pins.yml
+
+- name: Install Noto Sans Math, for OpenStax's books set in Noto Sans
+  tags: [user]
+  become: "{{ ti_user != ansible_facts['user_id'] }}"
+  become_user: "{{ ti_user }}"
+  vars:
+    pins: "{{ (ti_pins.noto_sans_math | default({})) | combine(noto_sans_math_pins) }}"
+    zip: "NotoSansMath-v{{ noto_sans_math_version }}.zip"
+    unpacked: "{{ ti_opt_dir }}/noto-sans-math-{{ noto_sans_math_version }}"
+    # The copy the installation page names: the book asks for the font by
+    # this file's name, and the zip's otf copies are named otherwise.
+    member: NotoSansMath/hinted/ttf/NotoSansMath-Regular.ttf
+    installed: "{{ fonts_dir }}/NotoSansMath-Regular.ttf"
+  block:
+    - name: Stop on a release with no pinned checksum
+      ansible.builtin.assert:
+        that: noto_sans_math_version in pins
+        fail_msg: >-
+          Noto Sans Math {{ noto_sans_math_version }} has no SHA-256 here. Give one you
+          trust in the inventory, as ti_pins: {noto_sans_math: {"{{ noto_sans_math_version }}": <sha256>}}.
+        quiet: true
+
+    - name: Download the release, refused unless its SHA-256 matches
+      ansible.builtin.get_url:
+        url: "{{ noto_sans_math_release_url }}/NotoSansMath-v{{ noto_sans_math_version }}/{{ zip }}"
+        dest: "{{ ti_cache_dir }}/{{ zip }}"
+        checksum: "sha256:{{ pins[noto_sans_math_version] }}"
+        mode: "0644"
+
+    - name: Make a folder for it
+      ansible.builtin.file:
+        path: "{{ unpacked }}"
+        state: directory
+        mode: "0755"
+
+    - name: Take the font out of it
+      ansible.builtin.unarchive:
+        src: "{{ ti_cache_dir }}/{{ zip }}"
+        dest: "{{ unpacked }}"
+        remote_src: true
+        include: ["{{ member }}"]
+        creates: "{{ unpacked }}/{{ member }}"
+
+    - name: Make the fonts folder
+      ansible.builtin.file:
+        path: "{{ fonts_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Look for a copy in the fonts folder already
+      ansible.builtin.stat:
+        path: "{{ installed }}"
+        checksum_algorithm: sha256
+      register: fonts_there
+
+    - name: Look at the release's copy
+      ansible.builtin.stat:
+        path: "{{ unpacked }}/{{ member }}"
+        checksum_algorithm: sha256
+      register: fonts_ours
+
+    # A copy that's there already is kept: it may be one of the person's own.
+    - name: Copy it into the fonts folder, unless a copy is there
+      when: not fonts_there.stat.exists
+      ansible.builtin.copy:
+        src: "{{ unpacked }}/{{ member }}"
+        dest: "{{ installed }}"
+        remote_src: true
+        mode: "0644"
+
+    - name: Say that another copy there is kept
+      when: fonts_there.stat.exists and fonts_there.stat.checksum != fonts_ours.stat.checksum
+      ansible.builtin.debug:
+        msg: >-
+          {{ installed }} isn't Noto Sans Math {{ noto_sans_math_version }} as the release
+          has it, and it's kept as it is. If it isn't a copy of your own you want,
+          remove it and run the play again.
+
+    - name: Have LuaTeX use it
+      when: ti_tex | bool
+      environment:
+        PATH: "{{ tex_bin }}:/usr/local/bin:/usr/bin:/bin"
+      block:
+        - name: Ask LuaTeX's font list which copy it has
+          ansible.builtin.command:
+            argv: &find [luaotfload-tool, "--find=file:NotoSansMath-Regular.ttf"]
+          register: fonts_found
+          changed_when: false
+          failed_when: false
+
+        # Kept as a fact, since a skipped task's register replaces the result.
+        - name: Keep its answer
+          ansible.builtin.set_fact:
+            found_now: &said "{{ fonts_found.stdout ~ fonts_found.stderr }}"
+
+        - name: Make the list again, where it names another copy or none
+          when: installed not in found_now
+          ansible.builtin.command:
+            argv: [luaotfload-tool, --update]
+          changed_when: true
+
+        - name: Ask it again
+          when: installed not in found_now
+          ansible.builtin.command:
+            argv: *find
+          register: fonts_found
+          changed_when: false
+          failed_when: false
+
+        - name: Keep its answer
+          when: fonts_found is not skipped
+          ansible.builtin.set_fact:
+            found_now: *said
+
+        # Of two files with one name, LuaTeX's list keeps the first it reads
+        # and ignores the other, and it reads the system's fonts before the
+        # user's: so where a package has a copy, such as the 2.001 of Debian's
+        # and Ubuntu's fonts-noto-core, which has no MATH table, the copy in
+        # the fonts folder is never used. luaotfload leaves out a file its
+        # blacklist names, and reads every blacklist kpathsea finds, so one
+        # in the user's own TeX tree adds to TeX Live's.
+        - name: Find the user's own TeX tree, for a blacklist in it
+          when: installed not in found_now
+          ansible.builtin.command:
+            argv: [kpsewhich, -var-value=TEXMFHOME]
+          register: fonts_texmfhome
+          changed_when: false
+
+        - name: Leave out a copy among the system's fonts, which LuaTeX takes first
+          when:
+            - installed not in found_now
+            - other_copy is match('/usr/(local/)?share/fonts/')
+          vars:
+            other_copy: >-
+              {{ found_now | regex_findall('Resolved file name "([^"]+)"') | first | default('') }}
+          block:
+            - name: Name it in luaotfload's blacklist
+              ansible.builtin.lineinfile:
+                path: "{{ fonts_texmfhome.stdout }}/tex/luatex/luaotfload/luaotfload-blacklist.cnf"
+                line: "{{ other_copy }}"
+                create: true
+                mode: "0644"
+
+            # TinyTeX's own tree (texmf-local) has a database of its files,
+            # ls-R, which kpathsea reads in place of the folder, so it finds
+            # the blacklist only once the database is made again. A tree
+            # without one, as ~/texmf usually is, is read as it is, and is
+            # better left without one.
+            - name: Look for the tree's database of its files
+              ansible.builtin.stat:
+                path: "{{ fonts_texmfhome.stdout }}/ls-R"
+              register: fonts_lsr
+
+            - name: Make the database again, so the blacklist is found
+              when: fonts_lsr.stat.exists
+              ansible.builtin.command:
+                argv: [mktexlsr, "{{ fonts_texmfhome.stdout }}"]
+              changed_when: true
+
+            # A list made again only adds what's new: one left out needs it
+            # made from nothing.
+            - name: Make the list from nothing
+              ansible.builtin.command:
+                argv: [luaotfload-tool, --update, --force]
+              changed_when: true
+
+            - name: Ask it once more
+              ansible.builtin.command:
+                argv: *find
+              register: fonts_found
+              changed_when: false
+              failed_when: false
+
+            - name: Keep its answer
+              ansible.builtin.set_fact:
+                found_now: *said
+
+        - name: Check that the list names the copy in the fonts folder
+          ansible.builtin.assert:
+            that: installed in found_now
+            fail_msg: "luaotfload-tool --find said: {{ found_now | truncate(400) }}"
+            quiet: true
+
+        - name: Make a folder for a test
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: textbookimprover-ansible-fonts.
+          register: fonts_test
+          changed_when: false
+
+        # As TextbookImprover's PDF target names it; unicode-math warns where
+        # the font it's given has no MATH table, and sets the formulas in
+        # Latin Modern Math.
+        - name: Have LuaLaTeX set a formula in it
+          ansible.builtin.copy:
+            dest: "{{ fonts_test.path }}/math.tex"
+            mode: "0644"
+            content: |
+              \documentclass{article}
+              \usepackage{unicode-math}
+              \setmathfont{NotoSansMath-Regular.ttf}
+              \begin{document}
+              $x + y = \sum_{i=1}^{n} a_i$
+              \end{document}
+          changed_when: false
+
+        - name: Run it
+          ansible.builtin.command:
+            argv: [lualatex, -interaction=nonstopmode, -halt-on-error, math.tex]
+            chdir: "{{ fonts_test.path }}"
+          register: fonts_latex
+          changed_when: false
+          failed_when: false
+
+        - name: Read what it said
+          ansible.builtin.slurp:
+            path: "{{ fonts_test.path }}/math.log"
+          register: fonts_log
+          failed_when: false
+
+        - name: Take the test away
+          ansible.builtin.file:
+            path: "{{ fonts_test.path }}"
+            state: absent
+          changed_when: false
+
+        - name: Check that LuaLaTeX set the formula in Noto Sans Math
+          vars:
+            said: "{{ (fonts_log.content | default('') | b64decode) if fonts_log.content is defined else '' }}"
+          ansible.builtin.assert:
+            that:
+              - fonts_latex.rc == 0
+              - "'first font loaded by unicode-math' not in said"
+            fail_msg: >-
+              LuaLaTeX {{ 'stopped' if fonts_latex.rc != 0 else "didn't use Noto Sans Math, unicode-math saying it has no math table" }}:
+              {{ (said or fonts_latex.stdout) | regex_findall('(?m)^(?:!|Package unicode-math Warning).*$') | join(' ') | truncate(400) }}
+            success_msg: "LuaLaTeX sets formulas in {{ installed }}"

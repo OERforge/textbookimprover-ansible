@@ -1,0 +1,6 @@
+# Noto Sans Math, for the formulas of an OpenStax book set in Noto Sans: the
+# release, and where it's copied, the folder of the person's own fonts,
+# which LuaTeX's font list reads.
+noto_sans_math_version: "3.000"
+noto_sans_math_release_url: https://github.com/notofonts/math/releases/download
+fonts_dir: "{{ ti_home }}/.local/share/fonts"

@@ -12,6 +12,9 @@ ti_tex: true
 ti_validators: true
 ti_browser_checks: true
 ti_libreoffice: "{{ ti_profile == 'developer' }}"
+# The fonts for OpenStax's books (Noto Sans Math, and TeX Live's Noto
+# Emoji), which no other book needs: off unless asked for.
+ti_fonts: false
 
 ti_user: "{{ ansible_facts['user_id'] }}"
 ti_home: "{{ ansible_facts['user_dir'] }}"

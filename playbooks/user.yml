@@ -22,6 +22,8 @@
     - oerforge.textbookimprover.pandoc
     - role: oerforge.textbookimprover.tex
       when: ti_tex | bool
+    - role: oerforge.textbookimprover.fonts
+      when: ti_fonts | bool
     - role: oerforge.textbookimprover.validators
       when: ti_validators | bool
     - role: oerforge.textbookimprover.browser_checks

@@ -119,7 +119,8 @@ saved() {
 saved_profile=$(cat "$config_dir/profile" 2>/dev/null || true)
 if [ ! -f "$answers" ] || [ -z "$saved_profile" ] || $reconfigure; then
     tex=$(saved ti_tex) validators=$(saved ti_validators) browser=$(saved ti_browser_checks)
-    : "${tex:=true}" "${validators:=true}" "${browser:=true}"
+    fonts=$(saved ti_fonts)
+    : "${tex:=true}" "${validators:=true}" "${browser:=true}" "${fonts:=false}"
     profile_given=false
     [ -z "$profile" ] || profile_given=true
     [ -n "$profile" ] || profile=${saved_profile:-user}
@@ -146,6 +147,7 @@ EOF
         ask_yes_no 'Install TeX, for PDF output?' "$(yn "$tex")"; tex=$answer
         ask_yes_no 'Install the validators (epubcheck, the Nu checker, veraPDF)?' "$(yn "$validators")"; validators=$answer
         ask_yes_no 'Install the browser checks (Playwright'\''s Chromium and Ace), for --wcag?' "$(yn "$browser")"; browser=$answer
+        ask_yes_no 'Install the fonts for OpenStax'\''s books (Noto Sans Math)?' "$(yn "$fonts")"; fonts=$answer
     fi
     save_answers=true
 else
@@ -317,6 +319,7 @@ if $save_answers; then
 ti_tex: $tex
 ti_validators: $validators
 ti_browser_checks: $browser
+ti_fonts: $fonts
 EOF
     printf '%s\n' "$profile" > "$config_dir/profile"
 fi

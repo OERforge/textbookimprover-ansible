@@ -1,0 +1,6 @@
+# The SHA-256 of each release's zip, measured when it was added. notofonts
+# publishes no checksum or signature of its own. A version not here needs
+# its SHA-256 in the inventory, as ti_pins.noto_sans_math, which can add a
+# version but never replace one of these.
+noto_sans_math_pins:
+  "3.000": ac351837b41f8a897f020b97fb0f075ad574c1e9669fb5839ada1f92fd748356

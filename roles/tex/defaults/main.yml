@@ -81,6 +81,10 @@ tex_packages:
 # book of your own loads.
 tex_extra_packages: []
 
+# TeX Live's Noto Emoji, for an emoji in an OpenStax book's text, when the
+# fonts for OpenStax's books are asked for (ti_fonts).
+tex_font_packages: "{{ ['noto-emoji'] if ti_fonts | bool else [] }}"
+
 # The oldest LaTeX a PDF target builds with.
 tex_latex_minimum: "2026-06-01"
 
@@ -95,3 +99,7 @@ texlive_scheme: full
 texlive_docs: false
 texlive_source: false
 texlive_dir: "{{ ti_opt_dir }}/texlive/{{ texlive_year }}"
+
+# Where TeX is, and its commands, which the fonts role uses too.
+tex_root: "{{ ti_home ~ '/.TinyTeX' if tex_distribution == 'tinytex' else texlive_dir }}"
+tex_bin: "{{ tex_root }}/bin/x86_64-linux"

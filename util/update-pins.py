@@ -311,6 +311,15 @@ def add_epubcheck(v, folder, opts):
         set_default("validators", "epubcheck_version", v)
 
 
+def add_noto_sans_math(v, folder, opts):
+    base = defaults("fonts")["noto_sans_math_release_url"]
+    tag = f"NotoSansMath-v{v}"
+    tarball("fonts", "noto_sans_math_pins", f"{base}/{tag}/{tag}.zip", v, folder, opts,
+            github=("notofonts/math", tag))
+    if opts.default:
+        set_default("fonts", "noto_sans_math_version", v)
+
+
 def add_vnu(v, folder, opts):
     meta = fetch_json(f"https://registry.npmjs.org/vnu-jar/{v}")
     path, _ = download(meta["dist"]["tarball"], folder)
@@ -508,7 +517,7 @@ def add_textbookimprover(v, folder, opts):
 
 ADD = {"pandoc": add_pandoc, "tinytex": add_tinytex, "uv": add_uv, "epubcheck": add_epubcheck,
        "vnu": add_vnu, "verapdf": add_verapdf, "node": add_node, "playwright": add_playwright,
-       "ace": add_ace, "textbookimprover": add_textbookimprover}
+       "ace": add_ace, "noto_sans_math": add_noto_sans_math, "textbookimprover": add_textbookimprover}
 
 
 # --- Which releases are newer than the defaults.
@@ -529,6 +538,7 @@ def check(opts):
         "node": defaults("browser_checks")["node_version"],
         "playwright": defaults("browser_checks")["playwright_version"],
         "ace": defaults("browser_checks")["ace_version"],
+        "noto_sans_math": defaults("fonts")["noto_sans_math_version"],
         "textbookimprover": max(pins("textbookimprover")["textbookimprover_pins"], key=version_key),
     }
     newest = {
@@ -541,6 +551,7 @@ def check(opts):
         "node": lambda: newest_node(current["node"]),
         "playwright": lambda: fetch_json("https://pypi.org/pypi/playwright/json")["info"]["version"],
         "ace": lambda: fetch_json("https://registry.npmjs.org/@daisy/ace")["dist-tags"]["latest"],
+        "noto_sans_math": lambda: newest_tag("https://github.com/notofonts/math", "NotoSansMath-v"),
         "textbookimprover": lambda: newest_tag(defaults("textbookimprover")["ti_repository"], "v"),
     }
     behind = 0
@@ -614,6 +625,7 @@ def is_pinned(kind, version):
              "uv": ("developer", "uv_pins"), "epubcheck": ("validators", "epubcheck_pins"),
              "vnu": ("validators", "vnu_pins"), "verapdf": ("validators", "verapdf_pins"),
              "node": ("browser_checks", "node_pins"), "playwright": ("browser_checks", "playwright_pins"),
+             "noto_sans_math": ("fonts", "noto_sans_math_pins"),
              "textbookimprover": ("textbookimprover", "textbookimprover_pins")}
     if kind == "ace":
         return os.path.isdir(role_file("browser_checks", "files", "ace", version))

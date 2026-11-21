@@ -1,0 +1,7 @@
+galaxy_info:
+  author: TextbookImprover's contributors
+  description: Noto Sans Math, for the formulas of OpenStax's books set in Noto Sans, in the fonts folder LuaTeX's font list reads.
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies:
+  - role: oerforge.textbookimprover.base
