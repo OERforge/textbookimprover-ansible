@@ -16,13 +16,15 @@ if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 #   bindep      tests/unit/test_bindep.py: bindep importable by python3, or a
 #               folder holding it named by TI_TEST_BINDEP
 #   pins        tests/unit/test_update_pins.py: python3 and PyYAML
+#   skips       tests/unit/test_check_skips.py: python3
 #   lint        ansible-lint on PATH (run offline, at its production profile)
 #   shell       dash and shellcheck on PATH, for bootstrap.sh, which is POSIX sh
 #   containers  tests/run-scenarios.sh: Docker, and the network
 #
 # TI_TEST_IMAGES is "ubuntu:24.04 ubuntu:26.04" if unset. Everything else
 # tests/scenario.sh reads (TI_TEST_CA, TI_TEST_SOURCES, TI_TEST_BINDEP,
-# TI_TEST_EXTRA, TI_TEST_BOOTSTRAP) is passed on to the containers as it is.
+# TI_TEST_EXTRA, TI_TEST_BOOTSTRAP, TI_TEST_SKIPS) is passed on to the
+# containers as it is.
 set -u
 here=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -94,6 +96,13 @@ elif ! python3 -c 'import yaml' >/dev/null 2>&1; then
     skip pins "python3 can't import yaml; apt install python3-yaml"
 else
     run pins python3 "$here/tests/unit/test_update_pins.py"
+fi
+
+# skips: tests/check-skips.py, and the lists of skips each playbook allows
+if have python3; then
+    run skips python3 "$here/tests/unit/test_check_skips.py"
+else
+    skip skips "no python3"
 fi
 
 # lint: ansible-lint wants the collection where Ansible would find it, so it

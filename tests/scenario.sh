@@ -20,6 +20,9 @@
 #   TI_TEST_PANDOCS  the Pandocs to run the suites with, each in turn: versions
 #                    the play installed (pandoc_versions), or 3.9 for the
 #                    suites' stand-in for it; the play's default if unset
+#   TI_TEST_SKIPS    the skips the suites may leave (tests/check-skips.py):
+#                    a file of patterns, or "none" not to check them;
+#                    tests/skips/<playbook>.txt if unset
 #   TI_TEST_PLAYBOOK the collection's playbook to run: user (the default) or
 #                    developer
 #   TI_TEST_BOOTSTRAP  set to anything, to run the playbook through
@@ -194,6 +197,8 @@ as_tester bash -ic 'echo "T=$T"; command -v pandoc; pandoc --version | head -1;
 # installed, by a link named pandoc first on the PATH, or 3.9, the suites'
 # own stand-in for it (tests/pandoc39) over the play's newest Pandoc.
 suites_failed=()
+skips_failed=()
+allowed_skips=${TI_TEST_SKIPS:-/collection/tests/skips/$playbook.txt}
 if [ -n "${TI_TEST_SUITES:-}" ]; then
     for version in ${TI_TEST_PANDOCS:-default}; do
         case $version in
@@ -213,16 +218,32 @@ if [ -n "${TI_TEST_SUITES:-}" ]; then
                 command="$command && python3 $suite"
             done
         fi
-        if ! as_tester bash -ic "PATH=\"$front\$PATH\"; $command" > "/tmp/suites-$version.log" 2>/dev/null; then
+        # run-all.sh lists the skips, and any suite it didn't run, on stderr.
+        if ! as_tester bash -ic "PATH=\"$front\$PATH\"; $command" \
+                > "/tmp/suites-$version.log" 2> "/tmp/suites-$version.err"; then
             suites_failed+=("$version")
         fi
         head -1 "/tmp/suites-$version.log"
         grep -E '^(FAIL|  FAIL)|All suites passed|passed$' "/tmp/suites-$version.log" | tail -4 || true
-        echo "skips: $(grep -c '^  skip' "/tmp/suites-$version.log")"
+        if [ "$TI_TEST_SUITES" != all ]; then
+            echo "skips: $(grep -c '^  skip' "/tmp/suites-$version.log"), not checked: not every suite ran"
+        elif [ "$allowed_skips" = none ] || [ ! -f "$allowed_skips" ]; then
+            # The list as run-all.sh gives it, so that one can be made from it.
+            sed -n '/^[0-9]* check(s) skipped/,/^[0-9]* suite(s) failed/p' "/tmp/suites-$version.err"
+            grep '^skipped: ' "/tmp/suites-$version.err" || true
+            echo "skips not checked: no list of the skips allowed (TI_TEST_SKIPS)"
+        elif ! python3 /collection/tests/check-skips.py "/tmp/suites-$version.err" \
+                "$allowed_skips" "$version"; then
+            skips_failed+=("$version")
+        fi
     done
 fi
 if [ ${#suites_failed[@]} -gt 0 ]; then
     say "FAIL: the suites failed with Pandoc ${suites_failed[*]}"
+    exit 1
+fi
+if [ ${#skips_failed[@]} -gt 0 ]; then
+    say "FAIL: the suites skipped what the playbook should have made possible, with Pandoc ${skips_failed[*]}"
     exit 1
 fi
 say "done"

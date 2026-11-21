@@ -1,0 +1,14 @@
+# The checks TextbookImprover's suites may skip after the developer playbook,
+# for tests/check-skips.py: each line a Python regular expression matched from
+# the start of "<suite>: skip <text>", as tests/run-all.sh lists the skips; a
+# line beginning "3.9: " counts only under the suites' stand-in for Pandoc 3.9.
+# Any other skip fails the scenario: the play left out what the suites need.
+
+# The test user isn't root, as the suite's check of another user's file asks.
+run-unit-tests\.py: skip +not root, or no setpriv
+
+# Under the stand-in for Pandoc 3.9, the decks TextbookImprover writes only
+# with a later Pandoc (measured with the user playbook and TextbookImprover's
+# main, whose stand-in passes; 0.10's doesn't).
+3.9: run-slides-tests\.py: skip +Pandoc 3\.9 writes no
+3.9: run-decks-tests\.py: skip +(\d+ checks of [^:]+: )?Pandoc 3\.9 is too old for a deck's

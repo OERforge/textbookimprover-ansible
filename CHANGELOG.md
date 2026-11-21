@@ -23,6 +23,7 @@ What changed, newest first, as [Keep a Changelog](https://keepachangelog.com/en/
 
 ### Changed
 
+- `tests/scenario.sh` holds the checks TextbookImprover's suites skipped to the list in `tests/skips/` for its playbook, and fails on any other, or on a suite not run (`tests/check-skips.py`; `TI_TEST_SKIPS` gives another list, or `none`). It reads the list from `run-all.sh`'s standard error, which it had thrown away, so a whole suite skipped had gone unseen.
 - TinyTeX v2026.11 is the bundle a new TinyTeX starts from, and a TinyTeX already there is kept, with no bundle downloaded for it; `tlmgr` keeps it up to date, as before. `tests/scenario.sh` runs TextbookImprover's suites with each Pandoc `TI_TEST_PANDOCS` names.
 - Every setting can come from an inventory or `host_vars`, with `-e` over them. Each playbook now sets only `ti_profile`, and the roles' defaults follow it: the `developer` playbook's clone of `main`, full TeX Live, three Pandocs, and LibreOffice were play variables, which an inventory couldn't change. The switches for the optional roles (`ti_tex`, `ti_validators`, `ti_browser_checks`, `ti_libreoffice`) are defaults of the `base` role. The README has a Settings section.
 - The README says that the play's blocks in `~/.bashrc`, added at its end, take the place of a setup made by hand earlier in it, and how to try the playbooks without that.
