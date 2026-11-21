@@ -100,6 +100,15 @@
         dest: "{{ verapdf_wcag_dir }}/{{ item.name }}"
         checksum: "sha256:{{ item.sha256 }}"
         mode: "0644"
+      # Maven Central answers a burst of downloads with 429 Too Many
+      # Requests at times; those, and a server's errors, are tried again
+      # after a pause, and anything else, a wrong checksum among them, isn't.
+      register: verapdf_wcag_got
+      until: >-
+        verapdf_wcag_got is succeeded
+        or (verapdf_wcag_got.status_code | default(0)) not in [429, 500, 502, 503, 504]
+      retries: 6
+      delay: 20
       loop: "{{ verapdf_wcag_files[verapdf_version] }}"
       loop_control:
         label: "{{ item.name }}"
