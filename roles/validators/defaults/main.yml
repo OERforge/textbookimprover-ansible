@@ -9,7 +9,7 @@ epubcheck_release_url: https://github.com/w3c/epubcheck/releases/download
 
 # The Nu checker from npm's vnu-jar package, which keeps each version as one
 # file, where its GitHub release named latest is rebuilt in place.
-vnu_version: "26.11.14"
+vnu_version: "26.11.20"
 vnu_registry_url: https://registry.npmjs.org/vnu-jar/-
 
 verapdf_version: "1.30.4"

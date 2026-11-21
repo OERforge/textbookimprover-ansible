@@ -85,7 +85,7 @@ tex_extra_packages: []
 tex_latex_minimum: "2026-06-01"
 
 # TinyTeX's release; its bundle's SHA-256 is pinned in vars/pins.yml.
-tinytex_version: v2026.09
+tinytex_version: "v2026.11"
 tinytex_release_url: https://github.com/rstudio/tinytex-releases/releases/download
 
 # TeX Live from its own installer: the release, which the installer's

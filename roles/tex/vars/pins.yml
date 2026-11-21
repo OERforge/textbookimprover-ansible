@@ -3,6 +3,7 @@
 # its own. A version not here needs its SHA-256 in the inventory, as
 # ti_pins.tinytex, which can add a version but never replace one of these.
 tinytex_pins:
+  "v2026.11": 50e68059058db770a28bcca44d5a323cb57fc10d470017c858404aafeaac9dd7
   v2026.09: 9551e932ed74ea77a36b4bd3fb6d852f540c044037b083f77a8b15d4b97ca3fc
 
 # TeX Live's signing key, whose copy is files/texlive.asc. Its installer

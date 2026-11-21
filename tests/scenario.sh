@@ -17,6 +17,9 @@
 #   TI_TEST_SUITES   the TextbookImprover suites to run as the user afterward
 #                    (tests/run-*.py names, space-separated), or "all"
 #   TI_TEST_EXTRA    more -e options for every play
+#   TI_TEST_PANDOCS  the Pandocs to run the suites with, each in turn: versions
+#                    the play installed (pandoc_versions), or 3.9 for the
+#                    suites' stand-in for it; the play's default if unset
 #   TI_TEST_PLAYBOOK the collection's playbook to run: user (the default) or
 #                    developer
 #   TI_TEST_BOOTSTRAP  set to anything, to run the playbook through
@@ -187,14 +190,39 @@ as_tester bash -ic 'echo "T=$T"; command -v pandoc; pandoc --version | head -1;
     true' 2>/dev/null
 { grep -h -A4 "Check that it.s recent enough" /tmp/first.log | grep -o "LaTeX [0-9-]*" | head -1; } || true
 
+# The suites under each Pandoc TI_TEST_PANDOCS names: one the play
+# installed, by a link named pandoc first on the PATH, or 3.9, the suites'
+# own stand-in for it (tests/pandoc39) over the play's newest Pandoc.
+suites_failed=()
 if [ -n "${TI_TEST_SUITES:-}" ]; then
-    say "TextbookImprover's suites, as the user: ${TI_TEST_SUITES}"
-    if [ "$TI_TEST_SUITES" = all ]; then
-        as_tester bash -ic 'cd "$T" && tests/run-all.sh -j 2' 2>/dev/null
-    else
-        for suite in $TI_TEST_SUITES; do
-            as_tester bash -ic "cd \"\$T\"/tests && python3 $suite" 2>/dev/null | tail -3
-        done
-    fi
+    for version in ${TI_TEST_PANDOCS:-default}; do
+        case $version in
+            default) front='' ;;
+            3.9) front='$T/tests/pandoc39:' ;;
+            *)
+                mkdir -p "/opt/pandoc-$version"
+                ln -sf "/home/tester/.local/bin/pandoc-$version" "/opt/pandoc-$version/pandoc"
+                front="/opt/pandoc-$version:" ;;
+        esac
+        say "TextbookImprover's suites, as the user, with Pandoc ${version}: ${TI_TEST_SUITES}"
+        if [ "$TI_TEST_SUITES" = all ]; then
+            command='cd "$T" && pandoc --version | head -1 && tests/run-all.sh -j 2'
+        else
+            command='cd "$T"/tests && pandoc --version | head -1'
+            for suite in $TI_TEST_SUITES; do
+                command="$command && python3 $suite"
+            done
+        fi
+        if ! as_tester bash -ic "PATH=\"$front\$PATH\"; $command" > "/tmp/suites-$version.log" 2>/dev/null; then
+            suites_failed+=("$version")
+        fi
+        head -1 "/tmp/suites-$version.log"
+        grep -E '^(FAIL|  FAIL)|All suites passed|passed$' "/tmp/suites-$version.log" | tail -4 || true
+        echo "skips: $(grep -c '^  skip' "/tmp/suites-$version.log")"
+    done
+fi
+if [ ${#suites_failed[@]} -gt 0 ]; then
+    say "FAIL: the suites failed with Pandoc ${suites_failed[*]}"
+    exit 1
 fi
 say "done"
