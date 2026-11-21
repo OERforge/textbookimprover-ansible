@@ -1,6 +1,3 @@
-- name: Read the pinned checksums
-  ansible.builtin.include_vars: pins.yml
-
 - name: Stop on a TinyTeX with no pinned checksum
   vars:
     pins: "{{ (ti_pins.tinytex | default({})) | combine(tinytex_pins) }}"
@@ -36,11 +33,20 @@
     remote_src: true
     creates: "{{ tex_tlmgr }}"
 
+- name: Mark it unpacked by the role, which may then install it again
+  when: not tinytex_there.stat.exists
+  ansible.builtin.copy:
+    content: "Unpacked by textbookimprover-ansible's tex role.\n"
+    dest: "{{ tex_unpacked_marker }}"
+    mode: "0644"
+
 - name: Look for the mark of a TinyTeX brought up to date
   ansible.builtin.stat:
     path: "{{ tex_marker }}"
   register: tex_marked
 
-- name: Bring it up to date unless that's been done, or when asked
+- name: Bring it to the snapshot, or up to date unless that's been done or when asked
   ansible.builtin.set_fact:
-    tex_update_now: "{{ tex_update | bool or not tex_marked.stat.exists }}"
+    tex_update_now: >-
+      {{ tex_snapshot_due | bool if tex_dated | bool
+         else (tex_update | bool or not tex_marked.stat.exists) }}

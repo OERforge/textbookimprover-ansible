@@ -4,18 +4,23 @@
   register: tex_repository_now
   changed_when: false
 
-- name: Set the repository asked for
-  when: >-
-    tex_repository | length > 0
-    and not tex_repository_now.stdout.endswith(': ' ~ tex_repository)
+# With latest and no repository named, a TeX left set to a snapshot is given
+# CTAN's mirror service, so that it isn't held to that day.
+- name: Set the repository asked for, or the snapshot's
+  vars:
+    current: "{{ tex_repository_now.stdout.split(': ', 1) | last | trim }}"
+    wanted: >-
+      {{ tex_repository_used or ('https://mirror.ctan.org/systems/texlive/tlnet'
+         if current.startswith(tex_snapshot_url ~ '/') else '') }}
+  when: wanted | length > 0 and current != wanted
   ansible.builtin.command:
-    argv: ["{{ tex_tlmgr }}", option, repository, "{{ tex_repository }}"]
+    argv: ["{{ tex_tlmgr }}", option, repository, "{{ wanted }}"]
   changed_when: true
 
 # tlmgr goes on without checking when gpg doesn't work, saying only "not
 # verified", so each step that fetches anything first asks it to read the
 # repository without changing anything, and stops unless it says "(verified)".
-- name: Bring every package up to date
+- name: Bring every package up to date, or to the snapshot
   when: tex_update_now | bool
   block:
     - name: Check that tlmgr can verify the repository, changing nothing
@@ -23,20 +28,110 @@
         argv: ["{{ tex_tlmgr }}", update, --list]
       register: tex_check
       changed_when: false
-      failed_when: &unverified >-
-        tex_check.rc != 0 or '(verified)' not in tex_check.stdout
-        or 'not verified' in tex_check.stdout
+      failed_when: false
 
-    - name: Update tlmgr and every package
+    - name: Stop unless it can
+      ansible.builtin.assert:
+        that: &verified
+          - tex_check.rc == 0
+          - "'(verified)' in tex_check.stdout"
+          - "'not verified' not in tex_check.stdout"
+        fail_msg: >-
+          {{ (tex_root ~ " is newer than the repository it uses, which tlmgr won't read."
+              ~ (' TinyTeX ' ~ tinytex_version ~ ' is newer than the snapshot: set tex_snapshot'
+                 ~ ' to a later date, or tinytex_version to an earlier release.'
+                 if tex_dated | bool and tex_distribution == 'tinytex' else ''))
+             if tex_refused in tex_check.stderr
+             else "tlmgr can't verify the repository: " ~ (tex_check.stderr or tex_check.stdout) }}
+        quiet: true
+
+    - name: Check the database it read against the pin
+      when: tex_dated | bool
+      ansible.builtin.import_tasks: pin.yml
+
+    - name: Update tlmgr and every package but those held
       ansible.builtin.command:
-        argv: ["{{ tex_tlmgr }}", update, --self, --all]
+        argv: "{{ [tex_tlmgr, 'update', '--self', '--all'] + tex_held_names | map('regex_replace', '^', '--exclude=') | list }}"
       register: tex_updated
       changed_when: "'update:' in tex_updated.stdout"
+
+    - name: Take back, from the snapshot, the packages tlmgr would keep newer
+      when: tex_dated | bool and tex_keep | default([]) | difference(tex_held_all) | length > 0
+      ansible.builtin.command:
+        argv: "{{ [tex_tlmgr, 'install', '--reinstall'] + tex_keep | difference(tex_held_all) }}"
+      changed_when: true
+
+    - name: Check that every package is the snapshot's now
+      when: tex_dated | bool
+      block:
+        - name: Ask tlmgr what the snapshot would change
+          ansible.builtin.command:
+            argv: ["{{ tex_tlmgr }}", update, --list]
+          register: tex_check
+          changed_when: false
+          failed_when: false
+
+        - name: Stop unless it can verify the repository
+          ansible.builtin.assert:
+            that: *verified
+            fail_msg: "tlmgr can't verify the repository: {{ tex_check.stderr or tex_check.stdout }}"
+            quiet: true
+
+        - name: Check the database it read against the pin
+          ansible.builtin.import_tasks: pin.yml
+
+        - name: Stop unless the snapshot would change nothing but the packages held
+          vars:
+            differ: >-
+              {{ tex_check.stdout_lines | reject('match', '^(tlmgr: |\s*$)')
+                 | reject('regex', '^\S+:\s+(' ~ (tex_held_all | map('regex_escape') | join('|') or '(?!)') ~ ')\s') | list }}
+          ansible.builtin.assert:
+            that: differ | length == 0
+            fail_msg: "Some packages aren't the snapshot's: {{ differ | join('; ') }}"
+            quiet: true
 
     - name: Mark it brought up to date
       ansible.builtin.copy:
         content: "Brought up to date by textbookimprover-ansible's tex role.\n"
         dest: "{{ tex_marker }}"
+        mode: "0644"
+
+    - name: Mark it brought to the snapshot, or the latest packages
+      ansible.builtin.copy:
+        content: "{{ tex_snapshot | string }}\n"
+        dest: "{{ tex_snapshot_marker }}"
+        mode: "0644"
+
+- name: Install again, from the repository, the packages held no longer
+  when: tex_released | length > 0
+  block:
+    - name: Check that tlmgr can verify the repository, changing nothing
+      ansible.builtin.command:
+        argv: ["{{ tex_tlmgr }}", update, --list]
+      register: tex_check
+      changed_when: false
+      failed_when: false
+
+    - name: Stop unless it can
+      ansible.builtin.assert:
+        that: *verified
+        fail_msg: "tlmgr can't verify the repository: {{ tex_check.stderr or tex_check.stdout }}"
+        quiet: true
+
+    - name: Check the database it read against the pin
+      when: tex_dated | bool
+      ansible.builtin.import_tasks: pin.yml
+
+    - name: Install them again
+      ansible.builtin.command:
+        argv: "{{ [tex_tlmgr, 'install', '--reinstall'] + tex_released }}"
+      changed_when: true
+
+    - name: Forget them
+      ansible.builtin.copy:
+        content: "{{ ((tex_held_read.content | default('e30=')) | b64decode | from_json) | dict2items
+                     | rejectattr('key', 'in', tex_released) | items2dict | to_nice_json }}\n"
+        dest: "{{ tex_held_marker }}"
         mode: "0644"
 
 - name: List the packages installed, which needs no network
@@ -47,7 +142,9 @@
 
 - name: Install the packages not there yet
   vars:
-    tex_missing: "{{ (tex_packages + tex_extra_packages + tex_font_packages) | unique | difference(tex_installed_packages.stdout_lines) }}"
+    tex_missing: >-
+      {{ (tex_packages + tex_extra_packages + tex_font_packages + tex_held_names) | unique
+         | difference(tex_installed_packages.stdout_lines) }}
   when: tex_missing | length > 0
   block:
     - name: Check that tlmgr can verify the repository, changing nothing
@@ -55,7 +152,17 @@
         argv: ["{{ tex_tlmgr }}", update, --list]
       register: tex_check
       changed_when: false
-      failed_when: *unverified
+      failed_when: false
+
+    - name: Stop unless it can
+      ansible.builtin.assert:
+        that: *verified
+        fail_msg: "tlmgr can't verify the repository: {{ tex_check.stderr or tex_check.stdout }}"
+        quiet: true
+
+    - name: Check the database it read against the pin
+      when: tex_dated | bool
+      ansible.builtin.import_tasks: pin.yml
 
     - name: Bring tlmgr itself up to date, which it needs before it installs
       ansible.builtin.command:

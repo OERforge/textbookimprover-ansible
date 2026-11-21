@@ -1,0 +1,66 @@
+# Each package in tex_held_packages is installed as it was on its date, from
+# that day's snapshot, after the rest, and left out of every update, so it
+# stays as it is whatever tex_snapshot says. tlmgr won't read a repository
+# older than the TeX, so the role reads the day's database itself, checked
+# against its pin and TeX Live's signature, downloads the package's container
+# (and its x86_64-linux one, if it has one), checks each against the
+# database's SHA-512, and installs them with tlmgr install --file. A package
+# already installed at its date's revision isn't fetched again.
+- name: Read the dates and revisions the held packages were installed at
+  ansible.builtin.slurp:
+    src: "{{ tex_held_marker }}"
+  register: tex_held_read
+  failed_when: false
+
+- name: Ask tlmgr the revisions installed, which needs no network
+  ansible.builtin.command:
+    argv: "{{ [tex_tlmgr, 'info', '--only-installed', '--data', 'name,localrev'] + tex_held_names }}"
+  register: tex_held_now
+  changed_when: false
+
+- name: Note which aren't as asked
+  vars:
+    was: "{{ (tex_held_read.content | default('e30=')) | b64decode | from_json }}"
+    installed: "{{ dict(tex_held_now.stdout_lines | map('split', ',') | list) }}"
+  ansible.builtin.set_fact:
+    tex_held_was: "{{ was }}"
+    tex_held_due: >-
+      {%- set due = [] -%}
+      {%- for name in tex_held_names -%}
+        {%- set w = was.get(name, {}) -%}
+        {%- if w.get('date') != (tex_held_packages[name] | string)
+              or (w.get('revision') | string) != installed.get(name, '') -%}
+          {%- set _ = due.append(name) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ due }}
+
+- name: Install each date's packages
+  ansible.builtin.include_tasks: held_date.yml
+  loop: "{{ tex_held_due | map('extract', tex_held_packages) | map('string') | unique | list }}"
+  loop_control:
+    loop_var: tex_held_date
+
+- name: Check the revisions now
+  when: tex_held_due | length > 0
+  block:
+    - name: Ask tlmgr the revisions installed
+      ansible.builtin.command:
+        argv: "{{ [tex_tlmgr, 'info', '--only-installed', '--data', 'name,localrev'] + tex_held_names }}"
+      register: tex_held_now
+      changed_when: false
+
+    - name: Check that each is its date's
+      vars:
+        installed: "{{ dict(tex_held_now.stdout_lines | map('split', ',') | list) }}"
+      ansible.builtin.assert:
+        that: installed[item] == tex_held_got[item].revision
+        fail_msg: "{{ item }} is at revision {{ installed[item] }}, not {{ tex_held_got[item].revision }}, its revision on {{ tex_held_packages[item] }}."
+        quiet: true
+      loop: "{{ tex_held_due }}"
+
+    - name: Record them
+      ansible.builtin.copy:
+        content: "{{ tex_held_was | combine(tex_held_got) | to_nice_json }}\n"
+        dest: "{{ tex_held_marker }}"
+        mode: "0644"

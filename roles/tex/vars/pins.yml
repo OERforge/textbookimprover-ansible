@@ -6,6 +6,14 @@ tinytex_pins:
   "v2026.11": 50e68059058db770a28bcca44d5a323cb57fc10d470017c858404aafeaac9dd7
   v2026.09: 9551e932ed74ea77a36b4bd3fb6d852f540c044037b083f77a8b15d4b97ca3fc
 
+# The SHA-512 of each snapshot's texlive.tlpdb, by date, which the snapshot's
+# tlpkg/texlive.tlpdb.sha512 gives, signed by TeX Live's key: the role checks
+# that file's signature and its value against the pin before tlmgr reads the
+# snapshot. A date not here needs its SHA-512 in the inventory, as
+# ti_pins.tex_snapshot, which can add a date but never replace one of these.
+tex_snapshot_pins:
+  "2026-11-20": 465b3f100a0d9d722e4829eac98ac3788680757d3984e4438dcf965f4646579d18ed2be2a7a2a0cc1a115bba0ba3a8afa0e0552c90440ad1614987f9029406ba
+
 # TeX Live's signing key, whose copy is files/texlive.asc. Its installer
 # changes every day, so it's checked against the key's signature, not a pin;
 # tlmgr checks everything after that against the same key.

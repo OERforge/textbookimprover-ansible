@@ -1,0 +1,25 @@
+# TeX Live's key as a keyring of its own in tex_gpg_work, for gpgv, once its
+# fingerprint is checked. The caller sets GNUPGHOME to a folder of its own,
+# so that the user's keyring is never read or changed.
+- name: Copy TeX Live's key
+  ansible.builtin.copy:
+    src: texlive.asc
+    dest: "{{ tex_gpg_work }}/texlive.asc"
+    mode: "0644"
+
+- name: Read the key's fingerprint
+  ansible.builtin.command:
+    argv: [gpg, --show-keys, --with-colons, "{{ tex_gpg_work }}/texlive.asc"]
+  register: tex_key
+  changed_when: false
+
+- name: Check that the key is TeX Live's
+  ansible.builtin.assert:
+    that: ('fpr:::::::::' ~ texlive_key_fingerprint ~ ':') in tex_key.stdout_lines
+    fail_msg: The key in files/texlive.asc isn't TeX Live's ({{ texlive_key_fingerprint }}).
+    quiet: true
+
+- name: Make a keyring of it alone
+  ansible.builtin.command:
+    argv: [gpg, --dearmor, --output, "{{ tex_gpg_work }}/texlive.gpg", "{{ tex_gpg_work }}/texlive.asc"]
+    creates: "{{ tex_gpg_work }}/texlive.gpg"

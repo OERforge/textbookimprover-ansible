@@ -1,0 +1,159 @@
+# The packages held at one date, tex_held_date, from that day's snapshot.
+- name: Install the packages held at {{ tex_held_date }}
+  vars:
+    work: "{{ ti_cache_dir }}/texlive-held"
+    repository: "{{ tex_snapshot_url }}/{{ tex_held_date | replace('-', '/') }}/tlnet"
+    names: >-
+      {{ tex_held_due | select('in', tex_held | dict2items
+         | selectattr('value', 'equalto', tex_held_date) | map(attribute='key') | list) | list }}
+    pins: "{{ (ti_pins.tex_snapshot | default({})) | combine(tex_snapshot_pins) }}"
+  environment:
+    GNUPGHOME: "{{ ti_cache_dir }}/texlive-held/gnupg"
+  block:
+    - name: Start with an empty folder
+      ansible.builtin.file:
+        path: "{{ work }}"
+        state: absent
+
+    - name: Make the folder, and gpg's
+      ansible.builtin.file:
+        path: "{{ work }}/gnupg"
+        state: directory
+        mode: "0700"
+
+    # texlive.info answers Ansible's own downloads with a page refusing them,
+    # and lets curl through, which tlmgr uses too.
+    - name: Download the day's database, its checksum, and the checksum's signature
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        argv: &curl
+          - curl
+          - --fail
+          - --silent
+          - --show-error
+          - --location
+          - --proto
+          - =https
+          - --max-time
+          - "600"
+          - --output
+          - "{{ work }}/{{ item | basename }}"
+          - "{{ repository }}/{{ item }}"
+        creates: "{{ work }}/{{ item | basename }}"
+      loop:
+        - tlpkg/texlive.tlpdb.xz
+        - tlpkg/texlive.tlpdb.sha512
+        - tlpkg/texlive.tlpdb.sha512.asc
+
+    - name: Make a keyring of TeX Live's key alone
+      ansible.builtin.import_tasks: key.yml
+      vars:
+        tex_gpg_work: "{{ work }}"
+
+    - name: Check the checksum's signature
+      ansible.builtin.command:
+        argv:
+          - gpgv
+          - --keyring
+          - "{{ work }}/texlive.gpg"
+          - "{{ work }}/texlive.tlpdb.sha512.asc"
+          - "{{ work }}/texlive.tlpdb.sha512"
+      changed_when: false
+
+    - name: Read the checksum
+      ansible.builtin.slurp:
+        src: "{{ work }}/texlive.tlpdb.sha512"
+      register: tex_held_sum
+
+    - name: Check it against the pin
+      ansible.builtin.assert:
+        that: (tex_held_sum.content | b64decode).split() == [pins[tex_held_date], 'texlive.tlpdb']
+        fail_msg: >-
+          TeX Live's snapshot of {{ tex_held_date }} at {{ repository }} has a
+          database other than the one pinned:
+          {{ (tex_held_sum.content | b64decode).split() | first }}.
+        quiet: true
+
+    - name: Unpack the database
+      ansible.builtin.command:
+        argv: [xz, --decompress, --keep, "{{ work }}/texlive.tlpdb.xz"]
+        creates: "{{ work }}/texlive.tlpdb"
+
+    - name: Check it against the checksum
+      ansible.builtin.command:
+        argv: [sha512sum, --check, --strict, texlive.tlpdb.sha512]
+        chdir: "{{ work }}"
+      changed_when: false
+
+    # The database is paragraphs, one a package, of "key value" lines.
+    - name: Find each package's revision and its container's SHA-512
+      ansible.builtin.command:
+        argv:
+          - awk
+          - -v
+          - "want={{ (names + names | map('regex_replace', '$', '.x86_64-linux') | list) | join(' ') }}"
+          - >-
+            BEGIN { RS = ""; FS = "\n"; n = split(want, w, " "); for (i = 1; i <= n; i++) W[w[i]] = 1 }
+            { name = rev = sum = "";
+              for (i = 1; i <= NF; i++) {
+                if ($i ~ /^name /) name = substr($i, 6);
+                else if ($i ~ /^revision /) rev = substr($i, 10);
+                else if ($i ~ /^containerchecksum /) sum = substr($i, 19) }
+              if (name in W) print name "\t" rev "\t" sum }
+          - "{{ work }}/texlive.tlpdb"
+      register: tex_held_found
+      changed_when: false
+
+    - name: Note them
+      ansible.builtin.set_fact:
+        tex_held_entries: "{{ tex_held_found.stdout_lines | map('split', '\t') | list }}"
+
+    - name: Stop on a package the day hasn't
+      vars:
+        found: "{{ tex_held_entries | map('first') | list }}"
+      ansible.builtin.assert:
+        that: item in found
+        fail_msg: TeX Live's snapshot of {{ tex_held_date }} has no package {{ item }}.
+        quiet: true
+      loop: "{{ names }}"
+
+    - name: Download each container
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        argv: *curl
+        creates: "{{ work }}/{{ item | basename }}"
+      loop: "{{ tex_held_entries | map('first') | map('regex_replace', '^(.*)$', 'archive/\\1.tar.xz') | list }}"
+
+    - name: Read each container's SHA-512
+      ansible.builtin.stat:
+        path: "{{ work }}/{{ item.0 }}.tar.xz"
+        checksum_algorithm: sha512
+      register: tex_held_sums
+      loop: "{{ tex_held_entries }}"
+
+    # tlmgr installs a file without checking it ("cannot check integrity").
+    - name: Check each against the database
+      ansible.builtin.assert:
+        that: item.stat.checksum == item.item.2
+        fail_msg: "{{ item.item.0 }}.tar.xz isn't the container the database of {{ tex_held_date }} names."
+        quiet: true
+      loop: "{{ tex_held_sums.results }}"
+      loop_control:
+        label: "{{ item.item.0 }}"
+
+    - name: Install them
+      ansible.builtin.command:
+        argv: "{{ [tex_tlmgr, 'install', '--file'] + tex_held_entries | map('first') | map('regex_replace', '^(.*)$', work ~ '/\\1.tar.xz') | list }}"
+      changed_when: true
+
+    - name: Note their revisions
+      ansible.builtin.set_fact:
+        tex_held_got: >-
+          {%- set got = dict(tex_held_got | default({})) -%}
+          {%- for entry in tex_held_entries if entry[0] in names -%}
+            {%- set _ = got.update({entry[0]: {'date': tex_held_date, 'revision': entry[1]}}) -%}
+          {%- endfor -%}
+          {{ got }}
+
+    - name: Remove the folder
+      ansible.builtin.file:
+        path: "{{ work }}"
+        state: absent

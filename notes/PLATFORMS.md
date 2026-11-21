@@ -51,7 +51,7 @@ Measured 2026-11-20 in containers of each release.
 - **LibreOffice** from `apt`'s `libreoffice-impress`: 24.2.7.2 on Ubuntu 24.04, 26.2.6.3 on 26.04, and 25.2.3.2 on Debian 13.
 - **fontTools and python-docx** from `apt` on all three, under their `python3-` names.
 - **Python 3.9.25** from uv 0.13.9, the same build on all three, since uv brings its own.
-- **TeX Live's mirror**: CTAN's mirror service (`mirror.ctan.org`) sends each request to a mirror near the asker, a different one from one request to the next, so a network that allows only named hosts needs `tex_repository` set to one it allows.
+- **TeX Live's mirror**: CTAN's mirror service (`mirror.ctan.org`) sends each request to a mirror near the asker, a different one from one request to the next, so a network that allows only named hosts needs `tex_repository` set to one it allows, with `tex_snapshot: latest`. With a date, the only host is `texlive.info`, which answers a download by Ansible's `get_url` or Python's `urllib` with a page refusing it, with status 200, and lets `curl` through; the role and `util/update-pins.py` download from it with `curl`, and `tlmgr` uses `curl` too.
 - **TextbookImprover's suites** at `main` (459273a) on 26.04 with the full TeX Live: all passed, with one skip, `setpriv` as root, which only a run as root can check.
 
 ## `bootstrap.sh`, on all three

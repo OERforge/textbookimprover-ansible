@@ -16,6 +16,19 @@
     # Written once a TinyTeX has been brought up to date, or a TeX Live
     # installed, so that a run that stopped partway finishes the job.
     tex_marker: "{{ tex_root }}/.textbookimprover-ansible"
+    # Written when TinyTeX's bundle is unpacked, so that the role knows it
+    # may install it again.
+    tex_unpacked_marker: "{{ tex_root }}/.textbookimprover-ansible-unpacked"
+    # The snapshot's date once the packages are brought to it, or latest.
+    tex_snapshot_marker: "{{ tex_root }}/.textbookimprover-ansible-snapshot"
+    tex_dated: "{{ (tex_snapshot | string) != 'latest' }}"
+    tex_snapshot_repository: "{{ tex_snapshot_url }}/{{ (tex_snapshot | string) | replace('-', '/') }}/tlnet"
+    tex_repository_used: "{{ tex_snapshot_repository if tex_dated | bool else tex_repository }}"
+    # The packages held at a date, and the date and revision of each, once
+    # it's installed.
+    tex_held_marker: "{{ tex_root }}/.textbookimprover-ansible-held"
+    # What tlmgr says when it won't read a repository older than the TeX
+    tex_refused: seems to be older than the local installation
   block:
     - name: Stop on a TeX the role doesn't know
       ansible.builtin.assert:
@@ -23,16 +36,55 @@
         fail_msg: tex_distribution is {{ tex_distribution }}; it can be tinytex or texlive.
         quiet: true
 
-    - name: Install TinyTeX
-      ansible.builtin.import_tasks: tinytex.yml
-      when: tex_distribution == 'tinytex'
+    - name: Read the pinned checksums and TeX Live's key's fingerprint
+      ansible.builtin.include_vars: pins.yml
 
-    - name: Install TeX Live
-      ansible.builtin.import_tasks: texlive.yml
-      when: tex_distribution == 'texlive'
+    - name: Compare the TeX there with the snapshot asked for
+      ansible.builtin.import_tasks: snapshot.yml
 
-    - name: Install the packages
-      ansible.builtin.import_tasks: packages.yml
+    - name: Install TeX, and its packages, putting back the TeX put aside if that fails
+      block:
+        - name: Install TinyTeX
+          ansible.builtin.import_tasks: tinytex.yml
+          when: tex_distribution == 'tinytex'
+
+        - name: Install TeX Live
+          ansible.builtin.import_tasks: texlive.yml
+          when: tex_distribution == 'texlive'
+
+        - name: Install the packages
+          ansible.builtin.import_tasks: packages.yml
+
+        - name: Install the packages held at a date
+          when: tex_held_names | length > 0
+          ansible.builtin.import_tasks: held.yml
+
+        - name: Remove the TeX put aside
+          when: tex_aside | default(false) | bool
+          ansible.builtin.file:
+            path: "{{ tex_root }}.previous"
+            state: absent
+      rescue:
+        - name: Put back the TeX put aside
+          when: tex_aside | default(false) | bool
+          block:
+            - name: Remove the new one
+              ansible.builtin.file:
+                path: "{{ tex_root }}"
+                state: absent
+
+            - name: Put back the old one
+              ansible.builtin.command:
+                argv: [mv, --no-target-directory, "{{ tex_root }}.previous", "{{ tex_root }}"]
+                removes: "{{ tex_root }}.previous"
+
+        - name: Stop, with what went wrong
+          ansible.builtin.fail:
+            msg: >-
+              {{ ansible_failed_task.name }}: {{ ansible_failed_result.msg | default('failed') | regex_replace('\.$', '') }}
+              {{- (' (' ~ ansible_failed_result.stderr_lines[-3:] | join(' ') ~ ')')
+                  if ansible_failed_result.stderr_lines | default([]) else '' }}.
+              {{- (' The TeX there before is back in ' ~ tex_root ~ '.') if tex_aside | default(false) | bool else '' }}
 
     - name: Put TeX's commands on the shell's PATH
       ansible.builtin.blockinfile:

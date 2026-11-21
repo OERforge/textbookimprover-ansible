@@ -7,6 +7,7 @@ maintainers, run by hand; the playbooks never run it.
     util/update-pins.py add pandoc 3.15
     util/update-pins.py add node 26.14.0 --default
     util/update-pins.py verify pandoc 3.14
+    util/update-pins.py add tex_snapshot 2026-11-21 --default
 
 "add" downloads a release, checks it against everything its publisher
 offers (a signature, a checksum file, the registry's own digest, the digest
@@ -21,7 +22,8 @@ Downloads go into a temporary folder that's removed afterward. GITHUB_TOKEN,
 if set, is sent to GitHub's API, which otherwise allows few requests an hour,
 and nowhere else, not even where the API redirects.
 Only the standard library is needed, and PyYAML to read the pins back;
-"add ace" needs npm 10 or later; signatures need gpg and gpgv.
+"add ace" needs npm 10 or later; signatures need gpg and gpgv; TeX Live's
+snapshots need curl.
 """
 
 import argparse
@@ -116,6 +118,17 @@ def download(url, folder):
         raise Stop(f"{url}: {e.code} {e.reason}") from e
     except urllib.error.URLError as e:
         raise Stop(f"{url}: {e.reason}") from e
+
+
+def curl(url, folder):
+    """Download into the folder with curl, for texlive.info, which answers
+    urllib with a page refusing it, and lets curl through, as tlmgr uses it."""
+    path = os.path.join(folder, url.rsplit("/", 1)[-1])
+    run = subprocess.run(["curl", "--fail", "--silent", "--show-error", "--location", "--proto", "=https",
+                          "--max-time", "600", "--output", path, url], capture_output=True, text=True)
+    if run.returncode != 0:
+        raise Stop(f"{url}: {run.stderr.strip()}")
+    return path
 
 
 def digest(path, algorithm="sha256"):
@@ -292,6 +305,45 @@ def add_tinytex(v, folder, opts):
             github=("rstudio/tinytex-releases", v))
     if opts.default:
         set_default("tex", "tinytex_version", v)
+
+
+def add_tex_snapshot(v, folder, opts):
+    """A day's snapshot of TeX Live's repository: the SHA-512 of its database,
+    as the checksum file signed by TeX Live's key gives it."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        raise Stop(f"{v} isn't a date, as 2026-11-20")
+    base = f"{defaults('tex')['tex_snapshot_url']}/{v.replace('-', '/')}/tlnet/tlpkg"
+    sums = curl(f"{base}/texlive.tlpdb.sha512", folder)
+    signature = curl(f"{base}/texlive.tlpdb.sha512.asc", folder)
+    key = role_file("tex", "files", "texlive.asc")
+    home, ring = keyring(folder, [key])
+    expected = pins("tex")["texlive_key_fingerprint"]
+    if expected not in fingerprints(home, key):
+        raise Stop(f"files/texlive.asc isn't the key {expected}")
+    signer = gpgv(home, ring, signature, sums)
+    fields = open(sums, encoding="utf-8").read().split()
+    if len(fields) != 2 or fields[1] != "texlive.tlpdb" or not re.fullmatch(r"[0-9a-f]{128}", fields[0]):
+        raise Stop(f"texlive.tlpdb.sha512 isn't one SHA-512 of texlive.tlpdb: {fields[:4]}")
+    say(f"  texlive.tlpdb of {v}: SHA-512 {fields[0]}; signed by {signer}")
+    settle("tex", "tex_snapshot_pins", v, fields[0], single=fields[0])
+    if opts.default:
+        set_default("tex", "tex_snapshot", v)
+
+
+def newest_tex_snapshot():
+    """The newest of the last week's snapshots."""
+    import datetime
+    base = defaults("tex")["tex_snapshot_url"]
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+    with tempfile.TemporaryDirectory(prefix="update-pins-") as folder:
+        for back in range(8):
+            day = (today - datetime.timedelta(days=back)).isoformat()
+            try:
+                curl(f"{base}/{day.replace('-', '/')}/tlnet/tlpkg/texlive.tlpdb.sha512", folder)
+                return day
+            except Stop:
+                continue
+    raise Stop(f"{base} has no snapshot from the last week")
 
 
 def add_uv(v, folder, opts):
@@ -515,7 +567,7 @@ def add_textbookimprover(v, folder, opts):
     say("  ti_version is an expression of ti_source: change it by hand to make this the default")
 
 
-ADD = {"pandoc": add_pandoc, "tinytex": add_tinytex, "uv": add_uv, "epubcheck": add_epubcheck,
+ADD = {"pandoc": add_pandoc, "tinytex": add_tinytex, "tex_snapshot": add_tex_snapshot, "uv": add_uv, "epubcheck": add_epubcheck,
        "vnu": add_vnu, "verapdf": add_verapdf, "node": add_node, "playwright": add_playwright,
        "ace": add_ace, "noto_sans_math": add_noto_sans_math, "textbookimprover": add_textbookimprover}
 
@@ -531,6 +583,7 @@ def check(opts):
     current = {
         "pandoc": max(pins("pandoc")["pandoc_pins"], key=version_key),
         "tinytex": defaults("tex")["tinytex_version"],
+        "tex_snapshot": defaults("tex")["tex_snapshot"],
         "uv": defaults("developer")["uv_version"],
         "epubcheck": defaults("validators")["epubcheck_version"],
         "vnu": defaults("validators")["vnu_version"],
@@ -544,6 +597,7 @@ def check(opts):
     newest = {
         "pandoc": lambda: newest_tag("https://github.com/jgm/pandoc"),
         "tinytex": lambda: "v" + newest_tag("https://github.com/rstudio/tinytex-releases", "v"),
+        "tex_snapshot": newest_tex_snapshot,
         "uv": lambda: newest_tag("https://github.com/astral-sh/uv"),
         "epubcheck": lambda: newest_tag("https://github.com/w3c/epubcheck", "v"),
         "vnu": lambda: fetch_json("https://registry.npmjs.org/vnu-jar")["dist-tags"]["latest"],
@@ -622,6 +676,7 @@ def main():
 
 def is_pinned(kind, version):
     where = {"pandoc": ("pandoc", "pandoc_pins"), "tinytex": ("tex", "tinytex_pins"),
+             "tex_snapshot": ("tex", "tex_snapshot_pins"),
              "uv": ("developer", "uv_pins"), "epubcheck": ("validators", "epubcheck_pins"),
              "vnu": ("validators", "vnu_pins"), "verapdf": ("validators", "verapdf_pins"),
              "node": ("browser_checks", "node_pins"), "playwright": ("browser_checks", "playwright_pins"),

@@ -1,0 +1,190 @@
+# With a date in tex_snapshot, TeX's packages are that day's, from a snapshot
+# of TeX Live's repository, so that a package released since changes nothing
+# until the date is moved. A TeX already brought to that date isn't asked
+# again, and no request goes out; otherwise it's compared with the snapshot,
+# before anything is installed, since tlmgr can't always take it back:
+#
+#   - It won't read a repository older than the TeX there, which it judges by
+#     texlive-scripts, a package changed almost every day: a TeX even a day
+#     newer than the snapshot is refused. Only installing it again, from the
+#     snapshot, takes it back, and the role does that only for a TeX it
+#     installed.
+#   - When it does read the repository, "update" never takes a package back,
+#     but "install --reinstall" does, so the packages it would keep newer are
+#     installed again from the snapshot (in packages.yml).
+- name: Check tex_snapshot
+  ansible.builtin.assert:
+    that: (tex_snapshot | string) is match('^(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})$')
+    fail_msg: tex_snapshot is {{ tex_snapshot }}; it can be latest or a date, as 2026-11-20.
+    quiet: true
+
+- name: Stop on a repository named with a snapshot's date
+  ansible.builtin.assert:
+    that: not tex_dated | bool or tex_repository | length == 0
+    fail_msg: >-
+      tex_repository names a repository, and tex_snapshot the snapshot of
+      {{ tex_snapshot }}. Set tex_snapshot to latest to use tex_repository.
+    quiet: true
+
+- name: Stop on a snapshot with no pinned checksum
+  when: tex_dated | bool
+  vars:
+    pins: "{{ (ti_pins.tex_snapshot | default({})) | combine(tex_snapshot_pins) }}"
+  ansible.builtin.assert:
+    that: (tex_snapshot | string) in pins
+    fail_msg: >-
+      TeX Live's snapshot of {{ tex_snapshot }} has no SHA-512 here. Give its
+      texlive.tlpdb's, which its tlpkg/texlive.tlpdb.sha512 holds, in the
+      inventory, as ti_pins: {tex_snapshot: {"{{ tex_snapshot }}": <sha512>}},
+      once you've checked that file's signature.
+    quiet: true
+
+- name: Check tex_held_packages
+  ansible.builtin.assert:
+    that:
+      - tex_held_packages is mapping
+      - tex_held_packages.keys() | reject('match', '^[A-Za-z0-9][A-Za-z0-9_.-]*$') | list | length == 0
+      - tex_held_packages.values() | map('string') | reject('match', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') | list | length == 0
+      - tex_held_packages.keys() | intersect(['texlive-scripts', 'texlive.infra']) | length == 0
+    fail_msg: >-
+      tex_held_packages is {{ tex_held_packages }}; it maps a package's name
+      to a date, as ltx-talk: "2026-11-19", and can't hold texlive-scripts or
+      texlive.infra, which tlmgr itself is.
+    quiet: true
+
+- name: Note the held packages
+  ansible.builtin.set_fact:
+    tex_held: >-
+      {%- set held = {} -%}
+      {%- for name, date in tex_held_packages.items() -%}
+        {%- set _ = held.update({name: date | string}) -%}
+      {%- endfor -%}
+      {{ held }}
+    tex_held_names: "{{ tex_held_packages.keys() | sort }}"
+    tex_held_all: >-
+      {{ tex_held_packages.keys() | sort
+         + tex_held_packages.keys() | sort | map('regex_replace', '$', '.x86_64-linux') | list }}
+
+- name: Stop on a held package's date with no pinned checksum
+  vars:
+    pins: "{{ (ti_pins.tex_snapshot | default({})) | combine(tex_snapshot_pins) }}"
+  ansible.builtin.assert:
+    that: item.value in pins
+    fail_msg: >-
+      {{ item.key }} is held at TeX Live's snapshot of {{ item.value }}, which
+      has no SHA-512 here. Give its texlive.tlpdb's in the inventory, as
+      ti_pins: {tex_snapshot: {"{{ item.value }}": <sha512>}}, once you've
+      checked its signature.
+    quiet: true
+  loop: "{{ tex_held | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Look for a TeX put aside by a run that stopped while it installed TeX again
+  ansible.builtin.stat:
+    path: "{{ tex_root }}.previous"
+  register: tex_previous
+
+- name: Look for a TeX there already
+  ansible.builtin.stat:
+    path: "{{ tex_tlmgr }}"
+  register: tex_there
+
+- name: Stop on both
+  ansible.builtin.assert:
+    that: not (tex_previous.stat.exists and tex_there.stat.exists)
+    fail_msg: >-
+      {{ tex_root }}.previous is there, put aside by a run that stopped while
+      it installed TeX again in {{ tex_root }}. Keep whichever works, by the
+      name {{ tex_root }}, remove the other, and run again.
+    quiet: true
+
+- name: Put back one put aside, where no TeX is now
+  when: tex_previous.stat.exists
+  block:
+    - name: Remove what the run that stopped left
+      ansible.builtin.file:
+        path: "{{ tex_root }}"
+        state: absent
+
+    - name: Put it back
+      ansible.builtin.command:
+        argv: [mv, --no-target-directory, "{{ tex_root }}.previous", "{{ tex_root }}"]
+        removes: "{{ tex_root }}.previous"
+
+- name: Note whether there's a TeX now
+  ansible.builtin.set_fact:
+    tex_present: "{{ tex_there.stat.exists or tex_previous.stat.exists }}"
+
+- name: Read the date its packages were last brought to
+  ansible.builtin.slurp:
+    src: "{{ tex_snapshot_marker }}"
+  register: tex_snapshot_read
+  failed_when: false
+
+- name: Read the packages it holds
+  ansible.builtin.slurp:
+    src: "{{ tex_held_marker }}"
+  register: tex_held_read
+  failed_when: false
+
+- name: Compare that date with tex_snapshot, and note the packages to hold no longer
+  ansible.builtin.set_fact:
+    tex_snapshot_due: >-
+      {{ tex_dated | bool and (tex_update | bool or
+         ((tex_snapshot_read.content | default('')) | b64decode | trim) != (tex_snapshot | string)) }}
+    tex_released: >-
+      {{ ((tex_held_read.content | default('e30=')) | b64decode | from_json).keys()
+         | difference(tex_held_names) | sort }}
+
+- name: Compare the TeX there with the snapshot, changing nothing
+  when: tex_snapshot_due | bool and tex_present | bool
+  block:
+    - name: Ask tlmgr what the snapshot would change
+      ansible.builtin.command:
+        argv: ["{{ tex_tlmgr }}", --repository, "{{ tex_snapshot_repository }}", update, --list]
+      register: tex_compare
+      changed_when: false
+      failed_when: >-
+        (tex_compare.rc != 0 and tex_refused not in tex_compare.stderr)
+        or (tex_compare.rc == 0 and ('(verified)' not in tex_compare.stdout
+                                     or 'not verified' in tex_compare.stdout))
+
+    - name: Note what it would keep newer, or that it refuses the snapshot
+      ansible.builtin.set_fact:
+        tex_newer: "{{ tex_compare.rc != 0 }}"
+        tex_keep: "{{ tex_compare.stdout | regex_findall('(?m)^keep:\\s+(\\S+)') | difference(tex_held_all) }}"
+
+    - name: Check the database it read against the pin
+      when: not tex_newer | bool
+      ansible.builtin.import_tasks: pin.yml
+
+    - name: Look for the role's mark on it
+      ansible.builtin.stat:
+        path: "{{ tex_unpacked_marker if tex_distribution == 'tinytex' else tex_marker }}"
+      register: tex_made
+
+    - name: Stop on a TeX newer than the snapshot that the role didn't install
+      ansible.builtin.assert:
+        that: not tex_newer | bool or tex_made.stat.exists
+        fail_msg: >-
+          The TeX in {{ tex_root }} is newer than TeX Live's snapshot of
+          {{ tex_snapshot }}, and tlmgr can't take it back. The role installs
+          TeX again only where it installed it. Remove that folder and run
+          again, or set tex_snapshot to latest, or to a later date.
+        quiet: true
+
+    # Put aside, not removed, until the new one is installed: it comes back
+    # if that fails. Renamed, it takes no more room meanwhile, but the new
+    # one takes as much again.
+    - name: Put it aside, to install it again from the snapshot
+      when: tex_newer | bool
+      ansible.builtin.command:
+        argv: [mv, --no-target-directory, "{{ tex_root }}", "{{ tex_root }}.previous"]
+        creates: "{{ tex_root }}.previous"
+
+    - name: Note that it's put aside, and holds nothing now
+      when: tex_newer | bool
+      ansible.builtin.set_fact:
+        tex_aside: true
+        tex_released: []

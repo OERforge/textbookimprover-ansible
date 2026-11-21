@@ -1,0 +1,22 @@
+# tlmgr checks a repository's database against the checksum TeX Live signed,
+# and keeps a copy of it named for the repository; the copy's SHA-512 is
+# that checksum. Checked against the pin, it makes the snapshot's date mean
+# the database tlmgr read, and no other day's, however it was signed.
+- name: Find the copy tlmgr keeps of the snapshot's database
+  ansible.builtin.stat:
+    path: "{{ tex_root }}/tlpkg/texlive.tlpdb.main.{{ tex_snapshot_repository | md5 }}"
+    checksum_algorithm: sha512
+  register: tex_read
+
+- name: Check it against the pin
+  vars:
+    pins: "{{ (ti_pins.tex_snapshot | default({})) | combine(tex_snapshot_pins) }}"
+  ansible.builtin.assert:
+    that:
+      - tex_read.stat.exists
+      - tex_read.stat.checksum == pins[tex_snapshot | string]
+    fail_msg: >-
+      tlmgr read a database from {{ tex_snapshot_repository }} other than
+      the one pinned for {{ tex_snapshot }}:
+      {{ tex_read.stat.checksum | default('no copy of it in ' ~ tex_root ~ '/tlpkg') }}.
+    quiet: true

@@ -9,17 +9,45 @@
 # languages the suites need.
 tex_distribution: "{{ 'texlive' if ti_profile == 'developer' else 'tinytex' }}"
 
-# The repository tlmgr installs and updates from, set before anything is
-# fetched. Empty leaves TinyTeX's own choice (a mirror chosen for you), and
-# gives the TeX Live installer CTAN's mirror service. A network that allows
-# only named hosts needs a fixed mirror, such as
-# https://ctan.math.illinois.edu/systems/texlive/tlnet, and a dated snapshot
-# from texlive.info's tlnet-archive holds TeX still.
+# Which day's TeX Live packages: a date, for that day's snapshot of TeX
+# Live's repository, which texlive.info keeps, or latest, for the packages of
+# the day TeX is installed or updated. A date's snapshot needs its SHA-512
+# pinned in vars/pins.yml (util/update-pins.py add tex_snapshot <date>), or in
+# the inventory, as ti_pins.tex_snapshot. Each run brings TeX to the date:
+# forward by updating, and back by installing again, from the snapshot, the
+# packages tlmgr won't take back. When tlmgr won't read an older repository
+# at all, which is when TeX is even a day newer, the role installs the whole
+# of a TeX it installed again: TinyTeX's bundle, or TeX Live's full scheme,
+# several gigabytes and a quarter of an hour. The TeX there is put aside
+# until the new one is installed, and put back if that fails, so there's
+# room needed for both meanwhile. A package added by hand with tlmgr goes
+# then; name it in tex_extra_packages instead. A TeX already at the date is
+# left alone, with no request to the snapshot.
+tex_snapshot: "2026-11-20"
+tex_snapshot_url: https://texlive.info/tlnet-archive
+
+# Packages held at a date of their own, each installed as it was on that day,
+# after the rest, and left out of every update, as ltx-talk: "2026-11-19":
+# a way back from a package's release that breaks something, while the rest
+# moves on. Each date's snapshot needs its SHA-512 pinned, as tex_snapshot's
+# does. A held package is installed if it isn't yet, from tex_snapshot's
+# snapshot first, for what it depends on, so it has to be there too. Taken
+# out of this list, a package is installed again from the repository the
+# rest come from.
+tex_held_packages: {}
+
+# With tex_snapshot set to latest, the repository tlmgr installs and updates
+# from, set before anything is fetched. Empty leaves TinyTeX's own choice (a
+# mirror chosen for you), and gives the TeX Live installer CTAN's mirror
+# service. A network that allows only named hosts needs a fixed mirror, such
+# as https://ctan.math.illinois.edu/systems/texlive/tlnet.
 tex_repository: ""
 
-# Bring every package up to date (tlmgr update --self --all) on this run. A
-# new TinyTeX is always brought up to date once; after that, only when asked,
-# so that a second run changes nothing.
+# With tex_snapshot set to latest, bring every package up to date (tlmgr
+# update --self --all) on this run. A new TinyTeX is always brought up to date
+# once; after that, only when asked, so that a second run changes nothing.
+# With a date, compare TeX with the snapshot again, even if it was brought to
+# that date before.
 tex_update: false
 
 # The installation page's tlmgr install lines, whichever TeX: a full TeX Live

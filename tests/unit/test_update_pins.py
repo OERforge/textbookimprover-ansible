@@ -66,12 +66,23 @@ with tempfile.TemporaryDirectory() as scratch:
     check("a map the file hasn't stops the script",
           stops(lambda: up.write_pin("pandoc", "no_such_pins", "1", single="x")))
 
+    up.set_default("tex", "tex_snapshot", "2099-01-02")
+    check("a snapshot's date is a default like a version", up.defaults("tex")["tex_snapshot"] == "2099-01-02")
+    up.settle("tex", "tex_snapshot_pins", "2099-01-02", "ab" * 64, single="ab" * 64)
+    check("and its pin is found by date", up.is_pinned("tex_snapshot", "2099-01-02")
+          and not up.is_pinned("tex_snapshot", "2099-01-03"))
+    check("what isn't a date stops the script before anything is downloaded",
+          stops(lambda: up.add_tex_snapshot("2099-1-2", scratch, None))
+          and stops(lambda: up.add_tex_snapshot("../../x", scratch, None)))
+
     up.set_default("validators", "vnu_version", "99.1.1")
     check("a default is set where it's a plain version", up.defaults("validators")["vnu_version"] == "99.1.1")
     check("and a default the file hasn't stops the script",
           stops(lambda: up.set_default("validators", "no_such_version", "1")))
 
-check("versions are ordered by their numbers", up.version_key("3.10") > up.version_key("3.9")
+check("versions are ordered by their numbers, and dates by theirs",
+      up.version_key("2026-11-21") > up.version_key("2026-11-20") > up.version_key("2026-10-31")
+      and up.version_key("3.10") > up.version_key("3.9")
       and up.version_key("v2026.11") > up.version_key("v2026.09"))
 check("only releases count as stable", up.stable("3.14") and up.stable("v0.10")
       and not up.stable("pandoc-server-0.1.4") and not up.stable("27.0.0-alpha.0"))

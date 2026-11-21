@@ -1,6 +1,3 @@
-- name: Read the key's fingerprint
-  ansible.builtin.include_vars: pins.yml
-
 - name: Look for the mark of a TeX Live installed
   ansible.builtin.stat:
     path: "{{ tex_marker }}"
@@ -24,7 +21,7 @@
   when: not tex_marked.stat.exists
   vars:
     work: "{{ ti_cache_dir }}/texlive-installer"
-    repository: "{{ tex_repository or 'https://mirror.ctan.org/systems/texlive/tlnet' }}"
+    repository: "{{ tex_repository_used or 'https://mirror.ctan.org/systems/texlive/tlnet' }}"
   environment:
     # gpg's own folder, so that the user's keyring is never read or changed
     GNUPGHOME: "{{ ti_cache_dir }}/texlive-installer/gnupg"
@@ -40,7 +37,32 @@
         state: directory
         mode: "0700"
 
+    # texlive.info answers Ansible's own downloads with a page refusing them,
+    # and lets curl through, which tlmgr uses too.
+    - name: Download the snapshot's installer, its checksum, and the checksum's signature
+      when: tex_dated | bool
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        argv:
+          - curl
+          - --fail
+          - --silent
+          - --show-error
+          - --location
+          - --proto
+          - =https
+          - --max-time
+          - "600"
+          - --output
+          - "{{ work }}/{{ item }}"
+          - "{{ repository }}/{{ item }}"
+        creates: "{{ work }}/{{ item }}"
+      loop:
+        - install-tl-unx.tar.gz
+        - install-tl-unx.tar.gz.sha512
+        - install-tl-unx.tar.gz.sha512.asc
+
     - name: Download the installer, its checksum, and the checksum's signature
+      when: not tex_dated | bool
       ansible.builtin.get_url:
         url: "{{ repository }}/{{ item }}"
         dest: "{{ work }}/{{ item }}"
@@ -50,28 +72,10 @@
         - install-tl-unx.tar.gz.sha512
         - install-tl-unx.tar.gz.sha512.asc
 
-    - name: Copy TeX Live's key
-      ansible.builtin.copy:
-        src: texlive.asc
-        dest: "{{ work }}/texlive.asc"
-        mode: "0644"
-
-    - name: Read the key's fingerprint
-      ansible.builtin.command:
-        argv: [gpg, --show-keys, --with-colons, "{{ work }}/texlive.asc"]
-      register: tex_key
-      changed_when: false
-
-    - name: Check that the key is TeX Live's
-      ansible.builtin.assert:
-        that: ('fpr:::::::::' ~ texlive_key_fingerprint ~ ':') in tex_key.stdout_lines
-        fail_msg: The key in files/texlive.asc isn't TeX Live's ({{ texlive_key_fingerprint }}).
-        quiet: true
-
-    - name: Make a keyring of it alone
-      ansible.builtin.command:
-        argv: [gpg, --dearmor, --output, "{{ work }}/texlive.gpg", "{{ work }}/texlive.asc"]
-        creates: "{{ work }}/texlive.gpg"
+    - name: Make a keyring of TeX Live's key alone
+      ansible.builtin.import_tasks: key.yml
+      vars:
+        tex_gpg_work: "{{ work }}"
 
     - name: Check the checksum's signature
       ansible.builtin.command:
@@ -148,6 +152,6 @@
         path: "{{ work }}"
         state: absent
 
-- name: Bring TeX Live up to date only when asked
+- name: Bring TeX Live to the snapshot, or up to date only when asked
   ansible.builtin.set_fact:
-    tex_update_now: "{{ tex_update | bool }}"
+    tex_update_now: "{{ tex_snapshot_due | bool if tex_dated | bool else tex_update | bool }}"
