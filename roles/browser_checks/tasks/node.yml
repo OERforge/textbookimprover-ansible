@@ -30,12 +30,20 @@
         dest: "{{ ti_cache_dir }}/{{ tarball }}"
         checksum: "sha256:{{ pins_node[node_version].sha256 }}"
         mode: "0644"
+      register: node_got
+      until: node_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
 
     - name: Download the release's checksums and their signature
       ansible.builtin.get_url:
         url: "{{ node_release_url }}/v{{ node_version }}/{{ item }}"
         dest: "{{ work }}/{{ item }}"
         mode: "0644"
+      register: node_sums_got
+      until: node_sums_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
       loop: [SHASUMS256.txt, SHASUMS256.txt.sig]
 
     - name: Copy the release key that signed them

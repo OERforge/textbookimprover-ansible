@@ -83,6 +83,10 @@
         dest: "{{ ti_cache_dir }}/chrome-headless-shell-{{ chromium_version }}-linux64.zip"
         checksum: "sha256:{{ pins_chromium[chromium_version].sha256 }}"
         mode: "0644"
+      register: chromium_got
+      until: chromium_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
 
     - name: Make its folder
       ansible.builtin.file:

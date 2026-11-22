@@ -4,6 +4,10 @@
     dest: "{{ ti_cache_dir }}/epubcheck-{{ epubcheck_version }}.zip"
     checksum: "sha256:{{ pins_epubcheck[epubcheck_version] }}"
     mode: "0644"
+  register: epubcheck_got
+  until: epubcheck_got is not oerforge.textbookimprover.retryable
+  retries: "{{ ti_download_retries }}"
+  delay: "{{ ti_download_delay }}"
 
 - name: Unpack it
   ansible.builtin.unarchive:

@@ -17,6 +17,7 @@ if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 #               folder holding it named by TI_TEST_BINDEP
 #   pins        tests/unit/test_update_pins.py: python3 and PyYAML
 #   skips       tests/unit/test_check_skips.py: python3
+#   retry       tests/unit/test_retryable.py: python3
 #   lint        ansible-lint on PATH (run offline, at its production profile)
 #   shell       dash and shellcheck on PATH, for bootstrap.sh, which is POSIX sh
 #   containers  tests/run-scenarios.sh: Docker, and the network
@@ -103,6 +104,14 @@ if have python3; then
     run skips python3 "$here/tests/unit/test_check_skips.py"
 else
     skip skips "no python3"
+fi
+
+# retry: the rule for trying a download again, against the results downloads
+# really give
+if have python3; then
+    run retry python3 "$here/tests/unit/test_retryable.py"
+else
+    skip retry "no python3"
 fi
 
 # lint: ansible-lint wants the collection where Ansible would find it, so it

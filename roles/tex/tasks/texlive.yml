@@ -52,10 +52,19 @@
           - =https
           - --max-time
           - "600"
+          # a try cut short leaves nothing for the next to take as done
+          - --remove-on-error
+          # the HTTP status, for the retry's rule
+          - --write-out
+          - "%{http_code}"
           - --output
           - "{{ work }}/{{ item }}"
           - "{{ repository }}/{{ item }}"
         creates: "{{ work }}/{{ item }}"
+      register: texlive_snapshot_installer_got
+      until: texlive_snapshot_installer_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
       loop:
         - install-tl-unx.tar.gz
         - install-tl-unx.tar.gz.sha512
@@ -67,6 +76,10 @@
         url: "{{ repository }}/{{ item }}"
         dest: "{{ work }}/{{ item }}"
         mode: "0644"
+      register: texlive_installer_got
+      until: texlive_installer_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
       loop:
         - install-tl-unx.tar.gz
         - install-tl-unx.tar.gz.sha512

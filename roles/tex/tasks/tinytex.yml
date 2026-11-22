@@ -24,6 +24,10 @@
     dest: "{{ ti_cache_dir }}/TinyTeX-linux-x86_64-{{ tinytex_version }}.tar.xz"
     checksum: "sha256:{{ pins[tinytex_version] }}"
     mode: "0644"
+  register: tinytex_got
+  until: tinytex_got is not oerforge.textbookimprover.retryable
+  retries: "{{ ti_download_retries }}"
+  delay: "{{ ti_download_delay }}"
 
 - name: Unpack it as ~/.TinyTeX
   when: not tinytex_there.stat.exists

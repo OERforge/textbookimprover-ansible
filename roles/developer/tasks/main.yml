@@ -42,6 +42,10 @@
             dest: "{{ ti_cache_dir }}/uv-{{ uv_version }}-x86_64-unknown-linux-gnu.tar.gz"
             checksum: "sha256:{{ pins_uv[uv_version] }}"
             mode: "0644"
+          register: uv_got
+          until: uv_got is not oerforge.textbookimprover.retryable
+          retries: "{{ ti_download_retries }}"
+          delay: "{{ ti_download_delay }}"
 
         - name: Make uv's folder
           ansible.builtin.file:

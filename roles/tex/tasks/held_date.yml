@@ -35,10 +35,19 @@
           - =https
           - --max-time
           - "600"
+          # a try cut short leaves nothing for the next to take as done
+          - --remove-on-error
+          # the HTTP status, for the retry's rule
+          - --write-out
+          - "%{http_code}"
           - --output
           - "{{ work }}/{{ item | basename }}"
           - "{{ repository }}/{{ item }}"
         creates: "{{ work }}/{{ item | basename }}"
+      register: tex_held_database_got
+      until: tex_held_database_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
       loop:
         - tlpkg/texlive.tlpdb.xz
         - tlpkg/texlive.tlpdb.sha512
@@ -120,6 +129,10 @@
       ansible.builtin.command:  # noqa: command-instead-of-module
         argv: *curl
         creates: "{{ work }}/{{ item | basename }}"
+      register: tex_held_container_got
+      until: tex_held_container_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
       loop: "{{ tex_held_entries | map('first') | map('regex_replace', '^(.*)$', 'archive/\\1.tar.xz') | list }}"
 
     - name: Read each container's SHA-512

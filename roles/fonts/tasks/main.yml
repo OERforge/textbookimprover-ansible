@@ -29,6 +29,10 @@
         dest: "{{ ti_cache_dir }}/{{ zip }}"
         checksum: "sha256:{{ pins[noto_sans_math_version] }}"
         mode: "0644"
+      register: noto_sans_math_got
+      until: noto_sans_math_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
 
     - name: Make a folder for it
       ansible.builtin.file:

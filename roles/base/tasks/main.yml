@@ -2,6 +2,18 @@
   ansible.builtin.import_tasks: platform.yml
   tags: [always]
 
+- name: Stop on a retry setting that isn't a whole number
+  tags: [always]
+  ansible.builtin.assert:
+    that:
+      - ti_download_retries | string is match('^[0-9]+$')
+      - ti_download_delay | string is match('^[0-9]+$')
+    fail_msg: >-
+      ti_download_retries and ti_download_delay are whole numbers, of tries
+      and of seconds, 0 or more; they're {{ ti_download_retries }} and
+      {{ ti_download_delay }}.
+    quiet: true
+
 - name: Install the system packages every profile needs
   tags: [system]
   become: true

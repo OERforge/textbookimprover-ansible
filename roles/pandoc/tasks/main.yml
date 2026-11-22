@@ -23,6 +23,10 @@
         dest: "{{ ti_cache_dir }}/pandoc-{{ item }}-linux-amd64.tar.gz"
         checksum: "sha256:{{ pins[item | string] }}"
         mode: "0644"
+      register: pandoc_got
+      until: pandoc_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
       loop: "{{ pandoc_versions }}"
 
     - name: Unpack each release into its own folder

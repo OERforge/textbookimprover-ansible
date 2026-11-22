@@ -29,12 +29,20 @@
         dest: "{{ ti_cache_dir }}/{{ zip }}"
         checksum: "sha256:{{ pins_verapdf[verapdf_version] }}"
         mode: "0644"
+      register: verapdf_got
+      until: verapdf_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
 
     - name: Download its signature
       ansible.builtin.get_url:
         url: "{{ verapdf_release_url }}/{{ verapdf_version.split('.')[:2] | join('.') }}/{{ zip }}.asc"
         dest: "{{ work }}/{{ zip }}.asc"
         mode: "0644"
+      register: verapdf_signature_got
+      until: verapdf_signature_got is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
 
     - name: Copy veraPDF's key
       ansible.builtin.copy:
@@ -101,14 +109,12 @@
         checksum: "sha256:{{ item.sha256 }}"
         mode: "0644"
       # Maven Central answers a burst of downloads with 429 Too Many
-      # Requests at times; those, and a server's errors, are tried again
-      # after a pause, and anything else, a wrong checksum among them, isn't.
+      # Requests at times, for minutes, so these are tried at least 6 times,
+      # at least 20 seconds apart.
       register: verapdf_wcag_got
-      until: >-
-        verapdf_wcag_got is succeeded
-        or (verapdf_wcag_got.status_code | default(0)) not in [429, 500, 502, 503, 504]
-      retries: 6
-      delay: 20
+      until: verapdf_wcag_got is not oerforge.textbookimprover.retryable
+      retries: "{{ [ti_download_retries | int, 6] | max }}"
+      delay: "{{ [ti_download_delay | int, 20] | max }}"
       loop: "{{ verapdf_wcag_files[verapdf_version] }}"
       loop_control:
         label: "{{ item.name }}"

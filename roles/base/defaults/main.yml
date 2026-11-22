@@ -25,6 +25,13 @@ ti_cache_dir: "{{ ti_home }}/.cache/textbookimprover-ansible"
 ti_opt_dir: "{{ ti_home }}/.local/opt"
 ti_bin_dir: "{{ ti_home }}/.local/bin"
 
+# A download that failed in a way that may pass (no answer, the connection
+# lost, the body cut short, or a busy server) is tried again this many
+# times, this many seconds apart, each try checked as the first is. 0 tries
+# each download once.
+ti_download_retries: 3
+ti_download_delay: 10
+
 # The shell startup file the user step adds its lines to. A file of its
 # own, such as ~/.config/textbookimprover-ansible/shell.sh, keeps them out
 # of ~/.bashrc, for a person whose own settings should stay in force there,

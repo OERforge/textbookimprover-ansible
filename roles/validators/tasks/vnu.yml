@@ -4,6 +4,10 @@
     dest: "{{ ti_cache_dir }}/vnu-jar-{{ vnu_version }}.tgz"
     checksum: "sha256:{{ pins_vnu[vnu_version] }}"
     mode: "0644"
+  register: vnu_got
+  until: vnu_got is not oerforge.textbookimprover.retryable
+  retries: "{{ ti_download_retries }}"
+  delay: "{{ ti_download_delay }}"
 
 - name: Make its folder
   ansible.builtin.file:
