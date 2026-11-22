@@ -34,6 +34,7 @@ What changed, newest first, as [Keep a Changelog](https://keepachangelog.com/en/
 
 ### Fixed
 
+- `bootstrap.sh` passes the shell check with Ubuntu 24.04's ShellCheck (0.9.0), which flags an `&& … ||` that later releases don't.
 - The lookup plugin's platform atoms on Debian: `platform:debian-13`, as bindep makes them from `/etc/os-release`, not `platform:debian-13.7` from `/etc/debian_version` as well. No rule in `bindep.txt` named a point release, so no package changed.
 - `gpgv` is installed with the base packages: Debian 13's `apt` no longer brings it, and the roles check signatures with it.
 - `bindep.txt` no longer installs Node and npm from `apt` for the browser checks: Ubuntu 26.04's and Debian 13's `npm` is 9.2, older than the 10 Ace asks for, and brings almost 400 packages.

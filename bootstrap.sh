@@ -119,7 +119,9 @@ ask_yes_no() {
 
 # saved NAME: the value bootstrap.sh saved for a setting, or nothing.
 saved() {
-    [ -f "$answers" ] && sed -n "s/^$1: //p" "$answers" || true
+    if [ -f "$answers" ]; then
+        sed -n "s/^$1: //p" "$answers" || true
+    fi
 }
 
 saved_profile=$(cat "$config_dir/profile" 2>/dev/null || true)
