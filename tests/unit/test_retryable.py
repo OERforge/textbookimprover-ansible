@@ -6,7 +6,10 @@ that failed each way: 2.16.3 (Ubuntu 24.04's), 2.19.11 (Debian 13's), 2.20.1
 (Ubuntu 26.04's), and 2.21.6 each worded them alike, but for a body cut
 short, which 2.16 reports only as a checksum that doesn't match. The curl
 results are curl 8.5.0's exit codes for the same, with --fail and
---write-out %{http_code}. Needs python3 alone:
+--write-out %{http_code}. The git results are as ansible.builtin.git reported
+them with git 2.43.0 (Ubuntu 24.04's) and 2.47.3 (Debian 13's), both built with
+GnuTLS, against a server that failed each way over both of git's protocols.
+Needs python3 alone:
 
     python3 tests/unit/test_retryable.py
 """
@@ -96,6 +99,57 @@ check("curl: an untrusted certificate", {"failed": True, "rc": 60, "stdout": "00
 check("curl: a protocol refused", {"failed": True, "rc": 1, "stdout": "000"}, False)
 check("curl: no curl", {"failed": True, "rc": 2, "msg": "[Errno 2] No such file or directory: b'curl'",
                         "cmd": "curl"}, False)
+
+
+def git_failed(cmd, err):
+    return {"failed": True, "changed": False, "rc": 128, "cmd": cmd, "msg": err, "stderr": err + " ", "stdout": ""}
+
+
+LS = "/usr/bin/git ls-remote https://127.0.0.1:18446/x/repo.git -h"
+CLONE = "/usr/bin/git clone --origin origin --depth 1 --branch master https://127.0.0.1:18446/x/repo.git /tmp/c"
+ACCESS = "fatal: unable to access 'https://127.0.0.1:18446/x/repo.git/': "
+CUT = ("Cloning into '/tmp/c'...\nerror: RPC failed; curl 56 GnuTLS recv error (-110): The TLS connection "
+       "was non-properly terminated.\nerror: 6302 bytes of body are still expected\nfetch-pack: unexpected "
+       "disconnect while reading sideband packet\nfatal: early EOF\nfatal: fetch-pack: invalid index-pack output")
+check("git: done", {"changed": True, "before": None, "after": "9ddacf1", "cmd": CLONE}, False)
+check("git: dropped before an answer",
+      git_failed(LS, ACCESS + "GnuTLS recv error (-110): The TLS connection was non-properly terminated."), True)
+check("git: cut short in the pack", git_failed(CLONE, CUT), True)
+check("git: reset in the pack",
+      git_failed(CLONE, CUT.replace("GnuTLS recv error (-110): The TLS connection was non-properly terminated.",
+                                    "Recv failure: Connection reset by peer")), True)
+check("git: cut short in the dumb protocol's pack",
+      git_failed(CLONE, "Cloning into '/tmp/c'...\nerror: Unable to get pack file https://127.0.0.1:18445/x/"
+                        "objects/pack/pack-a0ca.pack\nGnuTLS recv error (-110): The TLS connection was "
+                        "non-properly terminated.\nerror: Unable to find 9ddacf1 under https://127.0.0.1:18445/x/"),
+      True)
+check("git: refused", git_failed(LS, ACCESS.replace("18446", "1") +
+      "Failed to connect to 127.0.0.1 port 1 after 0 ms: Couldn't connect to server"), True)
+check("git 2.47: refused", git_failed(LS, ACCESS.replace("18446", "1") +
+      "Failed to connect to 127.0.0.1 port 1 after 0 ms: Could not connect to server"), True)
+check("git: a name not found",
+      git_failed(LS, "fatal: unable to access 'https://no-such-host.invalid/x.git/': "
+                     "Could not resolve host: no-such-host.invalid"), True)
+check("git: under the low-speed limit",
+      git_failed(LS, ACCESS + "Operation too slow. Less than 1000 bytes/sec transferred the last 5 seconds"), True)
+check("git: 503 at the first request", git_failed(LS, ACCESS + "The requested URL returned error: 503"), True)
+check("git: 429 at the first request", git_failed(LS, ACCESS + "The requested URL returned error: 429"), True)
+check("git: 503 on the fetch",
+      git_failed(CLONE, "Cloning into '/tmp/c'...\nerror: RPC failed; HTTP 503 curl 22 The requested URL "
+                        "returned error: 503\nfatal: expected 'packfile'"), True)
+check("git: 429 on the fetch",
+      git_failed(CLONE, "Cloning into '/tmp/c'...\nerror: RPC failed; HTTP 429 curl 22 The requested URL "
+                        "returned error: 429\nfatal: expected 'packfile'"), True)
+check("git: no such repository",
+      git_failed("/usr/bin/git ls-remote https://127.0.0.1:18445/x/", "fatal: repository 'https://127.0.0.1:18445/x/' not found"),
+      False)
+check("git 2.43: an untrusted certificate",
+      git_failed(LS, ACCESS + "server certificate verification failed. CAfile: none CRLfile: none"), False)
+check("git 2.47: an untrusted certificate",
+      git_failed(LS, ACCESS + "server verification failed: certificate signer not trusted. "
+                              "(CAfile: /etc/ssl/certs/ca-certificates.crt CRLfile: none)"), False)
+check("git: a command given as a list", dict(git_failed(LS, ACCESS + "The requested URL returned error: 503"),
+                                             cmd=LS.split()), True)
 
 try:
     plugin.retryable("not a result")

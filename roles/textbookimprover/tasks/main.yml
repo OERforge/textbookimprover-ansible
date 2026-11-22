@@ -34,7 +34,15 @@
         depth: "{{ 1 if release else omit }}"
         update: "{{ true if release else ti_update_clone | bool }}"
         force: false
+      environment:
+        # a clone that stalls fails, and is tried again, rather than hanging:
+        # under 1,000 bytes a second for a minute
+        GIT_HTTP_LOW_SPEED_LIMIT: "1000"
+        GIT_HTTP_LOW_SPEED_TIME: "60"
       register: ti_clone
+      until: ti_clone is not oerforge.textbookimprover.retryable
+      retries: "{{ ti_download_retries }}"
+      delay: "{{ ti_download_delay }}"
 
     - name: Check that the release's tag names its pinned commit
       ansible.builtin.assert:

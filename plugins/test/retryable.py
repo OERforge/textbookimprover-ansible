@@ -9,8 +9,9 @@ description:
     short, or was answered 408, 429, 500, 502, 503, or 504; false for one that
     succeeded or failed any other way, a refused or untrusted certificate among
     them.
-  - Takes the result of C(ansible.builtin.get_url), or of C(curl) run with
-    C(--fail) and C(--write-out %{http_code}), as a task's C(until) sees it.
+  - Takes the result of C(ansible.builtin.get_url), of C(ansible.builtin.git),
+    or of C(curl) run with C(--fail) and C(--write-out %{http_code}), as a
+    task's C(until) sees it.
   - With ansible-core 2.16 a body cut short is reported only as a checksum
     that doesn't match, so a checksum that doesn't match is tried again too.
     The download is checked again each time, so nothing unchecked is kept,
@@ -40,6 +41,8 @@ _value:
   type: bool
 """
 
+import os
+import re
 from collections.abc import Mapping
 
 # The answers that say "not now": a timeout, too many requests, or the
@@ -69,6 +72,48 @@ GET_URL_MESSAGES = (
 CURL_CODES = frozenset({6, 7, 16, 18, 28, 52, 55, 56, 92})
 
 
+# git's reports, as git 2.43 (Ubuntu 24.04's) and 2.47 (Debian 13's), built
+# with GnuTLS, word them. A smart-HTTP request that failed names curl's code,
+# and its HTTP status where there was one: "RPC failed; curl 56 GnuTLS recv
+# error (-110)", "RPC failed; HTTP 503 curl 22 ...". Any other request gives
+# curl's own message after "unable to access '<url>': ", or after "Unable to
+# get pack file <url>" in the dumb protocol.
+GIT_RPC = re.compile(r"RPC failed; (?:HTTP (\d{3}) )?curl (\d+)")
+GIT_HTTP = re.compile(r"The requested URL returned error: (\d{3})")
+GIT_MESSAGES = (
+    # the connection closed before an answer, or partway through one
+    "GnuTLS recv error (-110)",
+    # the connection reset
+    "Recv failure:",
+    # a connection refused
+    "Failed to connect to",
+    # a name not found
+    "Could not resolve host:",
+    # under git's low-speed limit (GIT_HTTP_LOW_SPEED_LIMIT and _TIME)
+    "Operation too slow",
+)
+
+
+def _is_git(result):
+    cmd = result.get("cmd")
+    if isinstance(cmd, str):
+        cmd = cmd.split()
+    return bool(cmd) and os.path.basename(str(cmd[0])) == "git"
+
+
+def _git_retryable(result):
+    text = "%s\n%s" % (result.get("msg", ""), result.get("stderr", ""))
+    rpc = GIT_RPC.search(text)
+    if rpc:
+        if rpc.group(1):
+            return int(rpc.group(1)) in STATUSES
+        return int(rpc.group(2)) in CURL_CODES
+    http = GIT_HTTP.search(text)
+    if http:
+        return int(http.group(1)) in STATUSES
+    return any(m in text for m in GIT_MESSAGES)
+
+
 def _status(value):
     try:
         return int(str(value).strip())
@@ -82,6 +127,9 @@ def retryable(result):
         raise TypeError("retryable takes a task's result, not %s" % type(result).__name__)
     if not result.get("failed"):
         return False
+
+    if _is_git(result):
+        return _git_retryable(result)
 
     if "rc" in result:
         rc = result["rc"]
