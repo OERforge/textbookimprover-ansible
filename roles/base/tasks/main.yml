@@ -27,6 +27,41 @@
         - "{{ ti_opt_dir }}"
         - "{{ ti_bin_dir }}"
 
+    - name: Read which file the play's shell settings went in before
+      ansible.builtin.slurp:
+        src: "{{ ti_shell_rc_note }}"
+      register: ti_shell_rc_noted
+      failed_when: false
+
+    # Before the note was kept, the lines could only be in ~/.bashrc, unless
+    # ti_shell_rc had been set.
+    - name: Note where they were
+      ansible.builtin.set_fact:
+        ti_shell_rc_before: >-
+          {{ (ti_shell_rc_noted.content | b64decode).strip()
+             if ti_shell_rc_noted.content is defined
+             else ti_home ~ '/.bashrc' }}
+
+    - name: Take them out of the file they were in, where that's changed
+      when: ti_shell_rc_before != ti_shell_rc
+      ansible.builtin.blockinfile:
+        path: "{{ ti_shell_rc_before }}"
+        marker: "# {mark} textbookimprover-ansible: {{ item }}"
+        state: absent
+      loop: [PATH, TeX, T, validators, browser checks, developer]
+
+    - name: Make the folder for the note
+      ansible.builtin.file:
+        path: "{{ ti_shell_rc_note | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Note the file they go in now
+      ansible.builtin.copy:
+        dest: "{{ ti_shell_rc_note }}"
+        content: "{{ ti_shell_rc }}\n"
+        mode: "0644"
+
     - name: Put the folder of commands first on the shell's PATH
       ansible.builtin.blockinfile:
         path: "{{ ti_shell_rc }}"

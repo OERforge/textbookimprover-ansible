@@ -56,6 +56,8 @@ Open a new terminal after the play: it adds blocks to `~/.bashrc` putting `~/.lo
 
 The blocks go at the end of `~/.bashrc`, so in a new terminal they take the place of any settings of your own made earlier in it: if you've already set up TextbookImprover by hand, with a virtual environment you activate or `VERAPDF` pointing at a veraPDF of your own, the play's copies are the ones a new terminal finds. Nothing of yours is removed, and activating your own environment afterward still puts it first. To try the playbooks without that, run them as another user made for the purpose.
 
+To keep your own settings in force, put the play's in a file of their own: set `ti_shell_rc` in your `host_vars` (for `bootstrap.sh`, `~/.config/textbookimprover-ansible/inventory/host_vars/localhost.yml`), for example `ti_shell_rc: "{{ ti_home }}/.config/textbookimprover-ansible/shell.sh"`, and run the play again. It takes its blocks out of `~/.bashrc`, leaving your lines there as they are, and writes them in that file instead; `. ~/.config/textbookimprover-ansible/shell.sh` in a terminal then gives that terminal the play's settings. The blocks are plain `sh`, so the file can be sourced from either shell. Taking the setting out moves them back. The play notes the file it used in `~/.config/textbookimprover-ansible/shell-file`, and `bootstrap.sh`'s last lines name it.
+
 ### For working on TextbookImprover
 
 The `developer` playbook installs everything the `user` playbook does, with these differences:

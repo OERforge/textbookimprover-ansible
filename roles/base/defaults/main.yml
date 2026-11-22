@@ -25,8 +25,14 @@ ti_cache_dir: "{{ ti_home }}/.cache/textbookimprover-ansible"
 ti_opt_dir: "{{ ti_home }}/.local/opt"
 ti_bin_dir: "{{ ti_home }}/.local/bin"
 
-# The shell startup file the user step adds its lines to.
+# The shell startup file the user step adds its lines to. A file of its
+# own, such as ~/.config/textbookimprover-ansible/shell.sh, keeps them out
+# of ~/.bashrc, for a person whose own settings should stay in force there,
+# who then sources it when they want the play's. When this changes, the
+# play takes its lines out of the file it named before, which it notes in
+# ti_shell_rc_note.
 ti_shell_rc: "{{ ti_home }}/.bashrc"
+ti_shell_rc_note: "{{ ti_home }}/.config/textbookimprover-ansible/shell-file"
 
 # Platforms the collection is tested on. A play elsewhere stops at once,
 # unless this is true.

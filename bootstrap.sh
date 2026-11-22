@@ -356,9 +356,22 @@ password=''
 # --- What comes next.
 
 say ''
-say 'Done. Open a new terminal: the play added settings to ~/.bashrc that a new one'
-say 'reads, among them T, TextbookImprover'\''s folder, where docs/first-run.md walks'
-say 'through converting a first book.'
+# The play notes the file its shell settings went in, which ti_shell_rc in
+# the person's host_vars can make one of its own.
+shell_file=$(cat "$HOME/.config/textbookimprover-ansible/shell-file" 2>/dev/null || true)
+case $shell_file in
+    '' | "$HOME/.bashrc")
+        say 'Done. Open a new terminal: the play added settings to ~/.bashrc that a new one'
+        say 'reads, among them T, TextbookImprover'\''s folder, where docs/first-run.md walks'
+        say 'through converting a first book.'
+        ;;
+    *)
+        say "Done. The play's settings are in $shell_file, not ~/.bashrc:"
+        say "run . $shell_file in a terminal to have them there, among them"
+        say 'T, TextbookImprover'\''s folder, where docs/first-run.md walks through'
+        say 'converting a first book.'
+        ;;
+esac
 if grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; then
     say 'Keep your books under your Linux home folder, in ~/projects/ say, rather'
     say 'than under /mnt/c, where a conversion is noticeably slower.'
