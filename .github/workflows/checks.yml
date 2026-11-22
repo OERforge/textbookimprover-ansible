@@ -1,0 +1,72 @@
+# The collection's checks on GitHub's runners: the quick checks on every push
+# and pull request, and the playbooks in fresh containers of each target, with
+# TextbookImprover's suites, on main, once a week, and when asked. Nothing here
+# needs a secret, and the token can only read the repository.
+name: Checks
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Mondays, so that a download or a release that changed upstream shows up
+    # within a week even when nothing here has changed
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick:
+    name: Quick checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the collection
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install what the checks need
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dash shellcheck
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check \
+            ansible-lint==26.11.0 bindep==2.14.0
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      # Every quick check must run: one that can't is a failure here.
+      - name: Run them
+        run: bash tests/run-all.sh --no-skip
+
+  scenarios:
+    name: Playbook on ${{ matrix.image }}
+    # Each takes most of an hour, so not for every push.
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: quick
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:24.04", "ubuntu:26.04", "debian:13"]
+    steps:
+      - name: Check out the collection
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The user playbook as an ordinary user, twice, then the user step with
+      # sudo taken away, then every suite of TextbookImprover's release.
+      - name: Run the user playbook and the suites in a fresh container
+        env:
+          TI_TEST_SUITES: all
+          IMAGE: ${{ matrix.image }}
+        run: bash tests/run-scenarios.sh "$IMAGE"
