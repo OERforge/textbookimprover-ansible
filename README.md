@@ -2,7 +2,7 @@
 
 Ansible playbooks that set up a machine to use or develop [TextbookImprover](https://github.com/OERforge/textbookimprover): Pandoc, TextbookImprover itself, LuaLaTeX for tagged PDFs, the validators, the browser checks, and the rest of what its [installation page](https://github.com/OERforge/textbookimprover/blob/main/docs/installation.md) asks for.
 
-**Only part of it works yet.** The `user` playbook installs the system packages a book's conversion needs, checks the Python, and installs Pandoc, TeX for a PDF target, the validators, the browser checks, and TextbookImprover; a `developer` playbook adds what working on TextbookImprover needs; and `bootstrap.sh` runs either of them with one command. The fonts for OpenStax's books come next.
+**Only part of it works yet.** The `user` playbook installs the system packages a book's conversion needs, checks the Python, and installs Pandoc, TeX for a PDF target, the validators, the browser checks, TextbookImprover, and, when asked, the fonts for OpenStax's books; a `developer` playbook adds what working on TextbookImprover needs; and `bootstrap.sh` runs either of them with one command.
 
 Licensed MIT. See `LICENSE`.
 
@@ -25,7 +25,7 @@ curl -fsSLO https://raw.githubusercontent.com/OERforge/textbookimprover-ansible/
 sh bootstrap.sh
 ```
 
-It asks which setup the machine is for, `user` (converting books) or `developer` (working on TextbookImprover), and which optional parts to install: TeX for PDF output, the validators, and the browser checks. Then it asks for your `sudo` password, once, installs `ansible-core` and `git` with `apt` if they're missing, fetches the collection, and runs the playbook on the machine, which can take a while the first time. Open a new terminal afterward ([The shell's settings](#the-shells-settings), below).
+It asks which setup the machine is for, `user` (converting books) or `developer` (working on TextbookImprover), and which optional parts to install: TeX for PDF output, the validators, the browser checks, and the fonts for OpenStax's books. Then it asks for your `sudo` password, once, installs `ansible-core` and `git` with `apt` if they're missing, fetches the collection, and runs the playbook on the machine, which can take a while the first time. Open a new terminal afterward ([The shell's settings](#the-shells-settings), below). If the download stops partway, `curl` says so, and the part it got does nothing when run: the shell reads the whole script before it runs any of it. That's so with `curl … | sh` too.
 
 Run it again to update everything. `sh bootstrap.sh --user-only` updates what's in your home folder without asking for a password, `--reconfigure` asks the questions again, `--profile` chooses the setup without asking (saved with the answers on the first run or with `--reconfigure`), and options after `--` go to `ansible-playbook`, so `sh bootstrap.sh -- -e tex_update=true` checks TeX against its snapshot again. TeX's packages move on when the collection's date for them does (`tex_snapshot`, below). `--help` lists the rest. What it keeps, and where:
 

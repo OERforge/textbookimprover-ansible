@@ -12,6 +12,12 @@
 # --user-only it needs no password. --help lists the options.
 #
 # POSIX sh throughout, since it may be started as "sh bootstrap.sh".
+#
+# All of it is one group, which the shell reads to its end before it runs
+# any of it: a copy cut short, by a download that stopped partway, runs
+# nothing, and piped into sh, no command it starts can take the rest of the
+# script as its input. Nothing goes after the group's closing brace.
+{
 
 set -eu
 
@@ -368,3 +374,5 @@ say 'bootstrap.sh'\''s answers in group_vars/all/bootstrap.yml, and settings of'
 say 'your own in host_vars/localhost.yml, which win over them. To update'
 say 'everything later, run bootstrap.sh again; with --user-only, it needs no'
 say 'password.'
+
+}

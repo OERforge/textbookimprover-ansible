@@ -126,8 +126,20 @@ fi
 
 # shell: bootstrap.sh is POSIX sh throughout, so dash, which is Debian's and
 # Ubuntu's sh, has to parse it, and ShellCheck finds nothing in it as sh.
+# And it's one group, read whole before any of it runs, so every copy of it
+# cut short at a line's end, from its first command on, fails to parse, and
+# runs nothing.
 shell_check() {
-    dash -n "$here/bootstrap.sh" && shellcheck -s sh "$here/bootstrap.sh"
+    dash -n "$here/bootstrap.sh" && shellcheck -s sh "$here/bootstrap.sh" || return 1
+    local lines first n
+    lines=$(wc -l < "$here/bootstrap.sh")
+    first=$(grep -n -v -m 1 -e '^#' -e '^$' "$here/bootstrap.sh" | cut -d: -f1)
+    for ((n = first; n < lines; n++)); do
+        if head -n "$n" "$here/bootstrap.sh" | dash -n 2>/dev/null; then
+            echo "bootstrap.sh cut short after line $n of $lines parses, so it would run" >&2
+            return 1
+        fi
+    done
 }
 if ! have dash; then
     skip shell "no dash; apt install dash"
