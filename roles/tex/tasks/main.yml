@@ -68,6 +68,13 @@
         - name: Put back the TeX put aside
           when: tex_aside | default(false) | bool
           block:
+            # First, so that a run stopped while the rest goes doesn't take
+            # what's left for a TeX installed.
+            - name: Remove the new one's mark
+              ansible.builtin.file:
+                path: "{{ tex_snapshot_marker }}"
+                state: absent
+
             - name: Remove the new one
               ansible.builtin.file:
                 path: "{{ tex_root }}"

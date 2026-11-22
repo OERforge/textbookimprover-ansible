@@ -90,17 +90,23 @@
     path: "{{ tex_tlmgr }}"
   register: tex_there
 
-- name: Stop on both
-  ansible.builtin.assert:
-    that: not (tex_previous.stat.exists and tex_there.stat.exists)
-    fail_msg: >-
-      {{ tex_root }}.previous is there, put aside by a run that stopped while
-      it installed TeX again in {{ tex_root }}. Keep whichever works, by the
-      name {{ tex_root }}, remove the other, and run again.
-    quiet: true
-
-- name: Put back one put aside, where no TeX is now
+# The date's mark is written only once a TeX's packages are the snapshot's,
+# so a TeX beside one put aside, without it, is what a run that stopped left
+# of installing it again, and one with it was installed.
+- name: Look for the date's mark on a TeX beside one put aside
   when: tex_previous.stat.exists
+  ansible.builtin.stat:
+    path: "{{ tex_snapshot_marker }}"
+  register: tex_finished
+
+- name: Remove the TeX put aside, where the new one was installed
+  when: tex_previous.stat.exists and tex_finished.stat.exists
+  ansible.builtin.file:
+    path: "{{ tex_root }}.previous"
+    state: absent
+
+- name: Put back the TeX put aside, where the new one wasn't installed
+  when: tex_previous.stat.exists and not tex_finished.stat.exists
   block:
     - name: Remove what the run that stopped left
       ansible.builtin.file:
