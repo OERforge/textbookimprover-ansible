@@ -42,8 +42,15 @@
              if ti_shell_rc_noted.content is defined
              else ti_home ~ '/.bashrc' }}
 
+    # The person may have removed it since, and blockinfile fails on a file
+    # that isn't there.
+    - name: Look for that file
+      ansible.builtin.stat:
+        path: "{{ ti_shell_rc_before }}"
+      register: ti_shell_rc_before_file
+
     - name: Take them out of the file they were in, where that's changed
-      when: ti_shell_rc_before != ti_shell_rc
+      when: ti_shell_rc_before != ti_shell_rc and ti_shell_rc_before_file.stat.exists
       ansible.builtin.blockinfile:
         path: "{{ ti_shell_rc_before }}"
         marker: "# {mark} textbookimprover-ansible: {{ item }}"
