@@ -22,10 +22,13 @@
 set -eu
 
 repository=https://github.com/OERforge/textbookimprover-ansible.git
-script_url=https://raw.githubusercontent.com/OERforge/textbookimprover-ansible/main/bootstrap.sh
 # The collection's releases this copy of the script knows, oldest first, one
 # per line: the tag, then the commit it has to be. Until there's one, the
-# script uses main.
+# script uses main. Each run also reads the list in main's copy of this
+# script, which a fresh download would give, and takes the releases it adds;
+# a tag it gives another commit than this copy knows stops the run. Then the
+# chosen release's own copy of the script runs in its place, so its fixes
+# come with the release.
 releases=''
 
 data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/textbookimprover-ansible
@@ -124,6 +127,21 @@ saved() {
     fi
 }
 
+# releases_in: the release list of the copy of this script on standard
+# input, one "tag commit" a line, as it's written above: nothing for a copy
+# with none. It's read as text, never run.
+releases_in() {
+    awk '
+        !on && /^releases=\047/ { on = 1; sub(/^releases=\047/, "") }
+        on {
+            end = index($0, "\047")
+            line = end ? substr($0, 1, end - 1) : $0
+            gsub(/^[ \t]+|[ \t]+$/, "", line)
+            if (line != "") print line
+            if (end) exit
+        }'
+}
+
 saved_profile=$(cat "$config_dir/profile" 2>/dev/null || true)
 if [ ! -f "$answers" ] || [ -z "$saved_profile" ] || $reconfigure; then
     tex=$(saved ti_tex) validators=$(saved ti_validators) browser=$(saved ti_browser_checks)
@@ -189,30 +207,40 @@ if [ -n "$need" ] || ! $user_only; then
     if sudo -k -n true 2>/dev/null; then
         sudo_mode=no-password
     else
-        $terminal ||
-            die "sudo needs a password, and there's no terminal to ask for it in: run this in a terminal"
-        tries=0
-        while :; do
-            printf '[sudo] password for %s, asked once, for apt and the system packages: ' "$(id -un)" >/dev/tty
-            tty_settings=$(stty -g </dev/tty)
-            trap 'stty "$tty_settings" </dev/tty; exit 130' HUP INT TERM
-            stty -echo </dev/tty
-            IFS= read -r password </dev/tty || password=''
-            stty "$tty_settings" </dev/tty
-            trap - HUP INT TERM
-            printf '\n' >/dev/tty
-            if said=$(printf '%s\n' "$password" | sudo -S -k -p '' true 2>&1 >/dev/null); then
-                break
-            fi
-            # Given the right password, sudo says when the account isn't
-            # allowed to use it; another try wouldn't change that.
-            case $said in
-                *sudoers*|*'not allowed'*) die "sudo said: $(printf '%s\n' "$said" | tail -n 1)" ;;
-            esac
-            tries=$((tries + 1))
-            [ "$tries" -lt 3 ] || die "sudo didn't take the password three times"
-            say "sudo didn't take that; try again." >/dev/tty
-        done
+        if [ -n "${TI_BOOTSTRAP_SUDO_ON_STDIN:-}" ] && [ ! -t 0 ]; then
+            # From the copy of this script that handed over to this one,
+            # which asked for it, through a pipe: never a file or a command
+            # line.
+            IFS= read -r password || password=''
+            printf '%s\n' "$password" | sudo -S -k -p '' true >/dev/null 2>&1 ||
+                die "sudo didn't take the password the other copy of bootstrap.sh gave"
+        fi
+        if [ -z "$password" ]; then
+            $terminal ||
+                die "sudo needs a password, and there's no terminal to ask for it in: run this in a terminal"
+            tries=0
+            while :; do
+                printf '[sudo] password for %s, asked once, for apt and the system packages: ' "$(id -un)" >/dev/tty
+                tty_settings=$(stty -g </dev/tty)
+                trap 'stty "$tty_settings" </dev/tty; exit 130' HUP INT TERM
+                stty -echo </dev/tty
+                IFS= read -r password </dev/tty || password=''
+                stty "$tty_settings" </dev/tty
+                trap - HUP INT TERM
+                printf '\n' >/dev/tty
+                if said=$(printf '%s\n' "$password" | sudo -S -k -p '' true 2>&1 >/dev/null); then
+                    break
+                fi
+                # Given the right password, sudo says when the account isn't
+                # allowed to use it; another try wouldn't change that.
+                case $said in
+                    *sudoers*|*'not allowed'*) die "sudo said: $(printf '%s\n' "$said" | tail -n 1)" ;;
+                esac
+                tries=$((tries + 1))
+                [ "$tries" -lt 3 ] || die "sudo didn't take the password three times"
+                say "sudo didn't take that; try again." >/dev/tty
+            done
+        fi
         sudo_mode=password
     fi
 fi
@@ -258,7 +286,10 @@ else
         [ -z "$(git -C "$clone" status --porcelain)" ] ||
             die "$clone, bootstrap.sh's own copy of the collection, has changes in it, which it won't overwrite; --collection runs a copy of your own"
         git -C "$clone" remote set-url origin "$repository"
-        git -C "$clone" fetch --quiet --prune --tags origin
+        # A tag that's moved since the clone last fetched it is refused here
+        # ("would clobber existing tag"), and stops the run.
+        fetched=$(git -C "$clone" fetch --prune --tags origin 2>&1) ||
+            die "fetching the collection from $repository failed: $(printf '%s\n' "$fetched" | tail -n 2 | sed 's/^ *//' | tr '\n' ' ')"
     elif [ -e "$clone" ]; then
         die "$clone is there but isn't a clone of the collection"
     else
@@ -266,31 +297,41 @@ else
         git clone --quiet --no-checkout "$repository" "$clone"
     fi
 
+    # The releases known: this copy's, and those main's copy of this script
+    # adds, which is what a fresh download would know. A tag main's list
+    # gives another commit than this copy's stops the run, so a release this
+    # copy knows can't be moved; a list that isn't one stops it too.
+    main_releases=$(git -C "$clone" show refs/remotes/origin/main:bootstrap.sh 2>/dev/null | releases_in) ||
+        main_releases=''
+    bad=$(printf '%s\n' "$main_releases" | grep -Ev '^$|^v[0-9][0-9A-Za-z._-]* [0-9a-f]{40}$' || true)
+    [ -z "$bad" ] ||
+        die "main's bootstrap.sh lists a release as \"$(printf '%s\n' "$bad" | head -n 1)\", which isn't a tag and a commit: stopping"
+    moved=$(printf '%s\n%s\n' "$releases" "$main_releases" |
+        awk 'NF == 2 { if ($1 in c && c[$1] != $2) { print $1; exit } c[$1] = $2 }')
+    [ -z "$moved" ] ||
+        die "main's bootstrap.sh gives release $moved another commit than this copy does: stopping"
+    known=$(printf '%s\n%s\n' "$releases" "$main_releases" | awk 'NF == 2 && !seen[$1]++' | sort -V -k 1,1)
+
     if [ -z "$ref" ]; then
-        ref=$(printf '%s\n' "$releases" | awk 'NF { tag = $1 } END { print tag }')
+        ref=$(printf '%s\n' "$known" | awk 'NF { tag = $1 } END { print tag }')
         [ -n "$ref" ] || ref=main
     fi
     commit=$(git -C "$clone" rev-parse --verify --quiet "refs/remotes/origin/$ref^{commit}") ||
         commit=$(git -C "$clone" rev-parse --verify --quiet "refs/tags/$ref^{commit}") ||
         commit=$(git -C "$clone" rev-parse --verify --quiet "$ref^{commit}") ||
         die "the collection has no branch, tag, or commit $ref"
-    pinned=$(printf '%s\n' "$releases" | awk -v tag="$ref" '$1 == tag { print $2 }')
+    pinned=$(printf '%s\n' "$known" | awk -v tag="$ref" '$1 == tag { print $2 }')
     if [ -n "$pinned" ] && [ "$commit" != "$pinned" ]; then
-        die "the collection's tag $ref is at $commit, not at $pinned as this script expects: stopping"
+        die "the collection's tag $ref is at $commit, not at $pinned as bootstrap.sh's list expects: stopping"
     fi
     git -C "$clone" checkout --quiet --detach "$commit"
     short=$(git -C "$clone" rev-parse --short HEAD)
     if [ -n "$pinned" ]; then
-        say "The collection: release $ref, at the commit this script expects ($short)."
-    elif [ -z "$releases" ] && [ "$ref" = main ]; then
+        say "The collection: release $ref, at the commit bootstrap.sh's list expects ($short)."
+    elif [ -z "$known" ] && [ "$ref" = main ]; then
         say "The collection: main, at $short; there's no release yet to check it against."
     else
-        say "The collection: $ref, at $short, which this script has no commit to check against."
-    fi
-    newest=$(git -C "$clone" tag -l 'v[0-9]*' --sort=-v:refname | head -n 1)
-    if [ -n "$newest" ] && [ -n "$releases" ] &&
-        [ -z "$(printf '%s\n' "$releases" | awk -v tag="$newest" '$1 == tag')" ]; then
-        say "Release $newest of the collection is newer than this copy of bootstrap.sh knows; to use it, download bootstrap.sh again: $script_url"
+        say "The collection: $ref, at $short, which bootstrap.sh's list has no commit to check against."
     fi
 fi
 
@@ -330,6 +371,33 @@ ti_browser_checks: $browser
 ti_fonts: $fonts
 EOF
     printf '%s\n' "$profile" > "$config_dir/profile"
+fi
+
+# --- The chosen release's own copy of this script, in this one's place,
+# once: its fixes come with it, and it knows what the release's playbooks
+# ask. It's given the answers (saved above), and the password through a
+# pipe. A copy that's the same, or none in that commit, changes nothing.
+
+if [ -z "$collection" ] && [ -z "${TI_BOOTSTRAP_HANDED_OVER:-}" ]; then
+    handover=$(mktemp -d)
+    if git -C "$clone" show "$commit:bootstrap.sh" >"$handover/bootstrap.sh" 2>/dev/null &&
+        ! { [ -f "$0" ] && cmp -s "$0" "$handover/bootstrap.sh"; }; then
+        say "Handing over to the bootstrap.sh of $ref ($short)."
+        if $user_only; then set -- --user-only -- "$@"; else set -- -- "$@"; fi
+        set -- --yes --profile "$profile" --ref "$ref" --repository "$repository" "$@"
+        status=0
+        if [ "$sudo_mode" = password ]; then
+            printf '%s\n' "$password" |
+                TI_BOOTSTRAP_HANDED_OVER=1 TI_BOOTSTRAP_SUDO_ON_STDIN=1 sh "$handover/bootstrap.sh" "$@" ||
+                status=$?
+        else
+            TI_BOOTSTRAP_HANDED_OVER=1 sh "$handover/bootstrap.sh" "$@" </dev/null || status=$?
+        fi
+        password=''
+        rm -rf "$handover"
+        exit "$status"
+    fi
+    rm -rf "$handover"
 fi
 
 # --- The play.
