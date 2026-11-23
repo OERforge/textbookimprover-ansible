@@ -172,7 +172,7 @@ A pin is never replaced: for a version already pinned, `add` and `verify` check 
 
 ## Testing
 
-`tests/run-all.sh` runs every check whose needs are met and says which it skipped and why; `--help` lists its options.
+`tests/run-all.sh` runs every check whose needs are met and says which it skipped and why; `--help` lists its options. `DEVELOPING.md` says how to install what the checks need.
 
 ```bash
 tests/run-all.sh                 # the quick checks
