@@ -108,3 +108,41 @@
         that: browser_checks_ace_said.stdout | trim == ace_version
         fail_msg: "ace-puppeteer says {{ browser_checks_ace_said.stdout | truncate(200) }}, not {{ ace_version }}."
         success_msg: "Ace {{ ace_version }} on Node {{ node_version }}."
+
+    - name: Remove the Chromiums of Playwrights no longer asked for
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: Chromium
+        old_versions_in: "{{ browser_checks_browsers }}"
+        old_versions_name: 'chromium_headless_shell-[0-9]+'
+        old_versions_keep: ["{{ chromium_dir }}"]
+        old_versions_mark: false
+        old_versions_cache: 'chrome-headless-shell-[0-9][^/]*-linux64\.zip'
+        old_versions_cache_keep: ["chrome-headless-shell-{{ chromium_version }}-linux64.zip"]
+
+    - name: Remove the Nodes no longer asked for
+      when: browser_checks_ace | bool
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: Node
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: 'node-v[0-9][^/]*-linux-x64'
+        old_versions_keep: ["{{ node_dir }}"]
+        old_versions_cache: 'node-v[0-9][^/]*-linux-x64\.tar\.xz'
+        old_versions_cache_keep: ["node-v{{ node_version }}-linux-x64.tar.xz"]
+
+    - name: Remove the Aces no longer asked for
+      when: browser_checks_ace | bool
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: Ace
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: 'ace-[0-9][^/]*'
+        old_versions_keep: ["{{ ace_dir }}"]
+        old_versions_mark: false

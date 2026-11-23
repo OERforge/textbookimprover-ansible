@@ -1,0 +1,156 @@
+# Removes the versions of one thing this collection installed that the play
+# no longer asks for, once those it does ask for are installed and checked.
+# Imported by each role at its end, with:
+#
+#   old_versions_what     what it is, for the tasks' names
+#   old_versions_in       the folder the versions' folders are in, or
+#                         undefined where only the cache has versions
+#   old_versions_name     a regex for a version's folder name, unanchored,
+#                         which mustn't match any other thing's folders
+#   old_versions_keep     the folders of the versions asked for
+#   old_versions_mark     false where the role marks its folders itself
+#   old_versions_cache    a regex for its downloads' names in the cache
+#   old_versions_cache_keep  the downloads of the versions asked for
+#
+# A folder is taken for this collection's only by the mark in it,
+# .textbookimprover-ansible, which is written into each folder in use here
+# (force: false, so a role's own mark is left as it is). A folder without
+# one, a copy of the person's own of the same name, is never removed, and
+# the search doesn't follow links. Links in ti_bin_dir into a removed
+# folder go with it. The cache is this collection's alone, so its old
+# downloads go by their names.
+
+- name: "Take out the versions no longer asked for: {{ old_versions_what }}"
+  when: old_versions_in is defined
+  block:
+    - name: "Mark the folders in use as this collection's: {{ old_versions_what }}"
+      when: old_versions_mark | default(true) | bool
+      ansible.builtin.copy:
+        content: >
+          Installed by textbookimprover-ansible, which removes this folder once
+          another version is asked for in its place.
+        dest: "{{ item }}/.textbookimprover-ansible"
+        mode: "0644"
+        force: false
+      loop: "{{ old_versions_keep }}"
+
+    - name: "Find the folders this collection marked: {{ old_versions_what }}"
+      ansible.builtin.find:
+        paths: "{{ old_versions_in }}"
+        patterns: [.textbookimprover-ansible]
+        hidden: true
+        recurse: true
+        depth: 2
+        file_type: file
+      register: old_versions_marks
+
+    # Compared with repeated and trailing slashes taken out, so that a setting
+    # written "~/x/" can't make a folder in use look like another.
+    - name: Note those no longer asked for
+      vars:
+        in_folder: "{{ old_versions_in | regex_replace('/+', '/') | regex_replace('(?<=.)/$', '') }}"
+        keep: "{{ old_versions_keep | map('regex_replace', '/+', '/') | map('regex_replace', '(?<=.)/$', '') | list }}"
+        folder: "^{{ in_folder | regex_escape }}/({{ old_versions_name }})$"
+      ansible.builtin.set_fact:
+        old_versions_gone: >-
+          {{ old_versions_marks.files | map(attribute='path') | map('dirname')
+             | map('regex_replace', '/+', '/') | select('match', folder)
+             | reject('in', keep) | list }}
+
+    # And by what each is on disk, which no way of writing a path changes:
+    # a folder that's one of those in use is never taken for an old one.
+    - name: Look at the folders in use
+      when: old_versions_gone | length > 0
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: false
+      register: old_versions_kept
+      loop: "{{ old_versions_keep }}"
+
+    - name: Look at those to go
+      when: old_versions_gone | length > 0
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: false
+      register: old_versions_going
+      loop: "{{ old_versions_gone }}"
+
+    - name: Leave out any that's a folder in use, or isn't a folder
+      when: old_versions_gone | length > 0
+      ansible.builtin.set_fact:
+        old_versions_gone: []
+        old_versions_in_use: >-
+          {{ old_versions_kept.results | map(attribute='stat') | selectattr('exists')
+             | map(attribute='dev') | map('string')
+             | zip(old_versions_kept.results | map(attribute='stat') | selectattr('exists')
+                   | map(attribute='inode') | map('string'))
+             | map('join', ':') | list }}
+
+    - name: Keep the rest
+      when:
+        - item.stat.exists and item.stat.isdir and not item.stat.islnk
+        - (item.stat.dev ~ ':' ~ item.stat.inode) not in old_versions_in_use
+      ansible.builtin.set_fact:
+        old_versions_gone: "{{ old_versions_gone + [item.item] }}"
+      loop: "{{ old_versions_going.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Look for links into them
+      when: old_versions_gone | length > 0
+      ansible.builtin.find:
+        paths: "{{ ti_bin_dir }}"
+        file_type: link
+        hidden: true
+      register: old_versions_links
+
+    # find doesn't give a link's target under ansible-core 2.16; stat does.
+    - name: Read where each points
+      when: old_versions_gone | length > 0
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: false
+      register: old_versions_targets
+      loop: "{{ old_versions_links.files | default([]) | map(attribute='path') | list }}"
+
+    - name: Remove those links
+      when:
+        - old_versions_gone | length > 0
+        - item.stat.lnk_target is defined
+        # as written, or resolved, for a link written relative to its folder
+        - >-
+          (item.stat.lnk_target | regex_replace('/+', '/')) is match(into)
+          or (item.stat.lnk_source | default('')) is match(into)
+      vars:
+        into: "^({{ old_versions_gone | map('regex_escape') | join('|') }})/"
+      ansible.builtin.file:
+        path: "{{ item.item }}"
+        state: absent
+      loop: "{{ old_versions_targets.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: "Remove the folders no longer asked for: {{ old_versions_what }}"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ old_versions_gone }}"
+
+- name: "Find the downloads in the cache: {{ old_versions_what }}"
+  when: old_versions_cache is defined
+  ansible.builtin.find:
+    paths: "{{ ti_cache_dir }}"
+    patterns: ["^({{ old_versions_cache }})$"]
+    use_regex: true
+    file_type: file
+  register: old_versions_cached
+
+- name: Remove those no longer asked for
+  when: old_versions_cache is defined
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ old_versions_cached.files | map(attribute='path') | map('basename')
+       | reject('in', old_versions_cache_keep | map('basename') | list)
+       | map('regex_replace', '^', ti_cache_dir ~ '/') | list }}

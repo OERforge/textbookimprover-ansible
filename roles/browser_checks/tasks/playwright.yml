@@ -129,21 +129,3 @@
     content: "{{ browser_checks_driver.stdout }}"
     dest: "{{ browser_checks_browsers }}/.links/{{ browser_checks_driver.stdout | hash('sha1') }}"
     mode: "0644"
-
-- name: Find Chromiums this collection installed for other Playwrights
-  ansible.builtin.find:
-    paths: "{{ browser_checks_browsers }}"
-    patterns: .textbookimprover-ansible
-    hidden: true
-    recurse: true
-    depth: 2
-  register: browser_checks_ours
-
-- name: Remove them
-  ansible.builtin.file:
-    path: "{{ item.path | dirname }}"
-    state: absent
-  loop: "{{ browser_checks_ours.files }}"
-  when: item.path | dirname != chromium_dir
-  loop_control:
-    label: "{{ item.path | dirname }}"

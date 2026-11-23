@@ -66,17 +66,40 @@
         checksum_algorithm: sha256
       register: fonts_ours
 
-    # A copy that's there already is kept: it may be one of the person's own.
-    - name: Copy it into the fonts folder, unless a copy is there
-      when: not fonts_there.stat.exists
+    - name: Find the releases this collection unpacked before
+      ansible.builtin.find:
+        paths: "{{ ti_opt_dir }}"
+        patterns: ['^noto-sans-math-[0-9][^/]*$']
+        use_regex: true
+        file_type: directory
+      register: fonts_releases
+
+    - name: Look at their copies
+      ansible.builtin.stat:
+        path: "{{ item }}/{{ member }}"
+        checksum_algorithm: sha256
+      register: fonts_old
+      loop: "{{ fonts_releases.files | map(attribute='path') | reject('equalto', unpacked) | list }}"
+
+    # A copy that's there already is kept, since it may be one of the
+    # person's own, unless it's an older release's, which this collection
+    # put there.
+    - name: Copy it into the fonts folder, unless a copy of another kind is there
+      when: >-
+        not fonts_there.stat.exists
+        or (fonts_there.stat.checksum != fonts_ours.stat.checksum
+            and fonts_there.stat.checksum in old_copies)
+      vars:
+        old_copies: "{{ fonts_old.results | map(attribute='stat') | selectattr('checksum', 'defined') | map(attribute='checksum') | list }}"
       ansible.builtin.copy:
         src: "{{ unpacked }}/{{ member }}"
         dest: "{{ installed }}"
         remote_src: true
         mode: "0644"
+      register: fonts_copied
 
     - name: Say that another copy there is kept
-      when: fonts_there.stat.exists and fonts_there.stat.checksum != fonts_ours.stat.checksum
+      when: fonts_copied is skipped and fonts_there.stat.exists and fonts_there.stat.checksum != fonts_ours.stat.checksum
       ansible.builtin.debug:
         msg: >-
           {{ installed }} isn't Noto Sans Math {{ noto_sans_math_version }} as the release
@@ -100,14 +123,14 @@
           ansible.builtin.set_fact:
             found_now: &said "{{ fonts_found.stdout ~ fonts_found.stderr }}"
 
-        - name: Make the list again, where it names another copy or none
-          when: installed not in found_now
+        - name: Make the list again, where it names another copy or none, or the copy changed
+          when: installed not in found_now or fonts_copied is changed
           ansible.builtin.command:
             argv: [luaotfload-tool, --update]
           changed_when: true
 
         - name: Ask it again
-          when: installed not in found_now
+          when: installed not in found_now or fonts_copied is changed
           ansible.builtin.command:
             argv: *find
           register: fonts_found
@@ -242,3 +265,15 @@
               LuaLaTeX {{ 'stopped' if fonts_latex.rc != 0 else "didn't use Noto Sans Math, unicode-math saying it has no math table" }}:
               {{ (said or fonts_latex.stdout) | regex_findall('(?m)^(?:!|Package unicode-math Warning).*$') | join(' ') | truncate(400) }}
             success_msg: "LuaLaTeX sets formulas in {{ installed }}"
+
+    - name: Remove the releases no longer asked for
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: Noto Sans Math
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: 'noto-sans-math-[0-9][^/]*'
+        old_versions_keep: ["{{ unpacked }}"]
+        old_versions_cache: 'NotoSansMath-v[0-9][^/]*\.zip'
+        old_versions_cache_keep: ["{{ zip }}"]

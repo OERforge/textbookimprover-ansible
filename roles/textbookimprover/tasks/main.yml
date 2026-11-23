@@ -69,3 +69,78 @@
         marker: "# {mark} textbookimprover-ansible: T"
         block: |
           export T="{{ ti_dir | trim }}"
+
+    # A release's clone is marked inside .git, where the work tree's own
+    # status doesn't see it. An older release's clone is removed once this
+    # one is in, only where it's marked and holds nothing of the person's:
+    # TextbookImprover's .gitignore leaves out a conversion's output and
+    # sidecars, which may be someone's work, so only Python's own cache is
+    # passed over. A clone of a branch (ti_source: git) is never removed.
+    - name: Mark the release's clone as this collection's
+      when: release
+      ansible.builtin.copy:
+        content: >
+          Cloned by textbookimprover-ansible, which removes this clone once
+          another release is asked for, if nothing in it has changed.
+        dest: "{{ ti_dir | trim }}/.git/textbookimprover-ansible"
+        mode: "0644"
+        force: false
+
+    - name: Find the release clones beside it
+      ansible.builtin.find:
+        paths: "{{ ti_dir | trim | dirname }}"
+        patterns: ['^textbookimprover-[0-9][^/]*$']
+        use_regex: true
+        file_type: directory
+      register: ti_releases
+
+    - name: Look for this collection's mark on each
+      ansible.builtin.stat:
+        path: "{{ item }}/.git/textbookimprover-ansible"
+      register: ti_marks
+      loop: >-
+        {{ ti_releases.files | map(attribute='path') | map('regex_replace', '/+', '/')
+           | reject('equalto', ti_dir | trim | regex_replace('/+', '/')) | list }}
+
+    # Anything it prints, or a failure, keeps the clone.
+    - name: Ask each marked one whether anything in it is the person's
+      ansible.builtin.command:
+        argv:
+          - sh
+          - -c
+          - |
+            set -eu
+            tag=$(git -C "$1" describe --tags --exact-match HEAD)
+            [ "$tag" = "v${1##*/textbookimprover-}" ] || echo "HEAD is at $tag, not the folder's release"
+            git -C "$1" status --porcelain=v1 --ignored --untracked-files=normal \
+              | grep -Ev '^!! (.*/)?__pycache__/$|^!! .*\.py[cod]$' || true
+            git -C "$1" stash list
+            git -C "$1" log --branches --not HEAD --oneline
+          - sh
+          - "{{ item }}"
+      environment:
+        LC_ALL: C
+      register: ti_old_state
+      changed_when: false
+      failed_when: false
+      loop: "{{ ti_marks.results | selectattr('stat.exists') | map(attribute='item') | list }}"
+
+    - name: Remove those that hold nothing of the person's
+      when: item.rc == 0 and (item.stdout ~ item.stderr) | trim == ''
+      ansible.builtin.file:
+        path: "{{ item.item }}"
+        state: absent
+      loop: "{{ ti_old_state.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Say which are kept, and why
+      when: not (item.rc == 0 and (item.stdout ~ item.stderr) | trim == '')
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item }} is an older release's clone, kept because something in
+          it may be yours: {{ (item.stdout ~ ' ' ~ item.stderr) | trim | truncate(300) }}.
+          Remove it yourself when it holds nothing you want.
+      loop: "{{ ti_old_state.results }}"
+      loop_control:
+        label: "{{ item.item }}"

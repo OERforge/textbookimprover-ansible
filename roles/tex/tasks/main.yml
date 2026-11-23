@@ -124,3 +124,28 @@
           LuaLaTeX's LaTeX is {{ found or 'unknown' }}; a PDF target needs
           {{ tex_latex_minimum }} or later. Run again with -e tex_update=true.
         success_msg: LaTeX {{ found }}
+
+    # TinyTeX is installed in one place whatever its release, so only its
+    # bundles go; the one asked for is kept, to install it again from.
+    - name: Remove TinyTeX's bundles no longer asked for
+      when: tex_distribution == 'tinytex'
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: TinyTeX
+        old_versions_cache: 'TinyTeX-linux-x86_64-v[0-9][^/]*\.tar\.xz'
+        old_versions_cache_keep: ["TinyTeX-linux-x86_64-{{ tinytex_version }}.tar.xz"]
+
+    # Each year's TeX Live has a folder of its own, marked once it's installed.
+    - name: Remove the TeX Live years no longer asked for
+      when: tex_distribution == 'texlive'
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: TeX Live
+        old_versions_in: "{{ texlive_dir | dirname }}"
+        old_versions_name: '[0-9]{4}'
+        old_versions_keep: ["{{ texlive_dir }}"]
+        old_versions_mark: false

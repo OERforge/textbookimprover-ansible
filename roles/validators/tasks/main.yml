@@ -85,3 +85,50 @@
       loop_control:
         label: "{{ item.item.name }}"
         extended: false
+
+    - name: Remove the epubchecks no longer asked for
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: epubcheck
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: 'epubcheck-[0-9][^/]*'
+        old_versions_keep: ["{{ epubcheck_jar | dirname }}"]
+        old_versions_cache: 'epubcheck-[0-9][^/]*\.zip'
+        old_versions_cache_keep: ["epubcheck-{{ epubcheck_version }}.zip"]
+
+    - name: Remove the Nu checkers no longer asked for
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: Nu checker
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: 'vnu-[0-9][^/]*'
+        old_versions_keep: ["{{ ti_opt_dir }}/vnu-{{ vnu_version }}"]
+        old_versions_cache: 'vnu-jar-[0-9][^/]*\.tgz'
+        old_versions_cache_keep: ["vnu-jar-{{ vnu_version }}.tgz"]
+
+    - name: Remove the veraPDFs no longer asked for
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: veraPDF
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: 'verapdf-[0-9][^/]*'
+        old_versions_keep: ["{{ verapdf_dir }}"]
+        old_versions_cache: 'verapdf-greenfield-[0-9][^/]*-installer\.zip'
+        old_versions_cache_keep: ["verapdf-greenfield-{{ verapdf_version }}-installer.zip"]
+
+    - name: Remove the WCAG modules of veraPDFs no longer asked for
+      when: verapdf_wcag | bool
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: veraPDF WCAG
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: 'verapdf-wcag-[0-9][^/]*'
+        old_versions_keep: ["{{ verapdf_wcag_dir }}"]

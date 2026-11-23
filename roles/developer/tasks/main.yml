@@ -87,6 +87,39 @@
             fail_msg: "{{ ti_bin_dir }}/python3.9 says {{ developer_python39_said.stdout }}."
             success_msg: "{{ developer_python39_said.stdout }}, for the portability suite"
 
+        # uv's Pythons are in a folder of the collection's own (uv_env), so
+        # every one there but the version asked for is one it installed.
+        - name: List the Pythons uv installed
+          ansible.builtin.command:
+            argv: ["{{ uv_dir }}/uv", python, list, --only-installed, --output-format, json]
+          environment: "{{ uv_env }}"
+          register: developer_uv_pythons
+          changed_when: false
+
+        - name: Remove those no longer asked for
+          ansible.builtin.command:
+            argv: ["{{ uv_dir }}/uv", python, uninstall, --no-progress, "{{ item }}"]
+          environment: "{{ uv_env }}"
+          changed_when: true
+          loop: >-
+            {{ developer_uv_pythons.stdout | from_json
+               | selectattr('path', 'string')
+               | selectattr('path', 'match', (uv_env.UV_PYTHON_INSTALL_DIR | regex_escape) ~ '/')
+               | rejectattr('version', 'equalto', developer_python39_version)
+               | map(attribute='key') | unique | list }}
+
+        - name: Remove the uvs no longer asked for
+          ansible.builtin.import_role:
+            name: oerforge.textbookimprover.base
+            tasks_from: old_versions
+          vars:
+            old_versions_what: uv
+            old_versions_in: "{{ ti_opt_dir }}"
+            old_versions_name: 'uv-[0-9][^/]*'
+            old_versions_keep: ["{{ uv_dir }}"]
+            old_versions_cache: 'uv-[0-9][^/]*-x86_64-unknown-linux-gnu\.tar\.gz'
+            old_versions_cache_keep: ["uv-{{ uv_version }}-x86_64-unknown-linux-gnu.tar.gz"]
+
     - name: Clone OpenStax's cookbook at the ported commit
       when: developer_cookbook | bool
       block:
