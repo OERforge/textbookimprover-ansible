@@ -1,4 +1,5 @@
 - name: Install the test suites' Python packages
+  when: developer_test_packages | bool
   tags: [system]
   become: true
   ansible.builtin.apt:

@@ -26,6 +26,7 @@
     - oerforge.textbookimprover.browser_checks
     - role: oerforge.textbookimprover.libreoffice
       when: ti_libreoffice | bool
+    - oerforge.textbookimprover.developer
     - oerforge.textbookimprover.textbookimprover
   post_tasks:
     # Each role notes what a part that's on lacks, so that it's said here,

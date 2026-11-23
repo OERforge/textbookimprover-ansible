@@ -5,13 +5,15 @@ ti_profile: user
 
 # The switches for the parts that are optional: each on or off by profile
 # unless set. TeX, the validators, and the browser checks are on in both;
-# LibreOffice in developer only. A switch says whether a part is wanted: on,
-# its tools' versions default to the collection's and TextbookImprover is
-# pointed at them (the shell's settings, links in ti_bin_dir); off, they
-# default to none, and what the collection installed for it is removed. A
-# version given in the inventory is installed either way, but with the part
-# off, TextbookImprover isn't pointed at it. A part that's on with none of
-# its tools named is said at the play's end, as a warning.
+# LibreOffice in developer only, as are the developer role's own parts
+# (developer_test_packages, developer_python39, developer_cookbook). A switch
+# says whether a part is wanted: on, its tools' versions default to the
+# collection's and TextbookImprover is pointed at them (the shell's settings,
+# links in ti_bin_dir); off, they default to none, and what the collection
+# installed for it is removed. A version given in the inventory is installed
+# either way, but with the part off, TextbookImprover isn't pointed at it. A
+# part that's on with none of its tools named is said at the play's end, as a
+# warning.
 ti_tex: true
 ti_validators: true
 ti_browser_checks: true

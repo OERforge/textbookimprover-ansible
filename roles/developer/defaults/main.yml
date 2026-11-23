@@ -1,7 +1,13 @@
 # What working on TextbookImprover needs beyond converting books: the test
 # suites' Python packages from apt, the oldest Python the code is kept
 # working on, and the clone of OpenStax's cookbook its CNX ports are
-# compared with.
+# compared with. The role is in both playbooks, and each part is on in the
+# developer profile and off in the user profile unless set.
+
+# The test suites' Python packages (fontTools, python-docx) from apt. False
+# leaves them out, but doesn't remove them once installed: apt's packages are
+# the system's, which something else may use.
+developer_test_packages: "{{ ti_profile == 'developer' }}"
 
 # Python 3.9, installed by uv, which checks each build against the SHA-256 in
 # its own table, and linked as python3.9 in ~/.local/bin, where the
@@ -11,7 +17,7 @@
 # installed is removed; a version named here is installed either way, but
 # linked as python3.9 only with it on. uv_default_version is the
 # collection's, which util/update-pins.py sets.
-developer_python39: true
+developer_python39: "{{ ti_profile == 'developer' }}"
 developer_python39_version: "{{ '3.9.25' if developer_python39 | bool else '' }}"
 uv_default_version: "0.13.9"
 uv_version: "{{ uv_default_version if developer_python39 | bool else '' }}"
@@ -19,7 +25,8 @@ uv_release_url: https://github.com/astral-sh/uv/releases/download
 
 # openstax/cookbook at the commit TextbookImprover's CNX ports were made
 # from (notes/CNX-NOTES.md), named by CNX_COOKBOOK, which turns on the CNX
-# suite's comparisons with it. False leaves it out.
-developer_cookbook: true
+# suite's comparisons with it. False takes CNX_COOKBOOK out of the shell's
+# settings, but leaves the clone.
+developer_cookbook: "{{ ti_profile == 'developer' }}"
 cookbook_repository: https://github.com/openstax/cookbook.git
 cookbook_dir: "{{ ti_home }}/tools/openstax-cookbook"
