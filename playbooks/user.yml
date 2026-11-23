@@ -20,14 +20,18 @@
     - oerforge.textbookimprover.base
     - oerforge.textbookimprover.python
     - oerforge.textbookimprover.pandoc
-    - role: oerforge.textbookimprover.tex
-      when: ti_tex | bool
-    - role: oerforge.textbookimprover.fonts
-      when: ti_fonts | bool
-    - role: oerforge.textbookimprover.validators
-      when: ti_validators | bool
-    - role: oerforge.textbookimprover.browser_checks
-      when: ti_browser_checks | bool
+    - oerforge.textbookimprover.tex
+    - oerforge.textbookimprover.fonts
+    - oerforge.textbookimprover.validators
+    - oerforge.textbookimprover.browser_checks
     - role: oerforge.textbookimprover.libreoffice
       when: ti_libreoffice | bool
     - oerforge.textbookimprover.textbookimprover
+  post_tasks:
+    # Each role notes what a part that's on lacks, so that it's said here,
+    # just before the recap, where it isn't lost among the tasks.
+    - name: Say what the settings leave out
+      tags: [always]
+      oerforge.textbookimprover.warn:
+        msg: "{{ item }}"
+      loop: "{{ ti_warnings | default([]) }}"

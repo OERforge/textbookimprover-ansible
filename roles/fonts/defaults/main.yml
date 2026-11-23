@@ -1,6 +1,11 @@
 # Noto Sans Math, for the formulas of an OpenStax book set in Noto Sans: the
 # release, and where it's copied, the folder of the person's own fonts,
 # which LuaTeX's font list reads.
-noto_sans_math_version: "3.000"
+# With ti_fonts on, the collection's release (noto_sans_math_default_version,
+# which util/update-pins.py sets); with it off, none, and what the
+# collection unpacked and copied is removed. A release named here is
+# unpacked either way, but copied into the fonts folder only with ti_fonts.
+noto_sans_math_default_version: "3.000"
+noto_sans_math_version: "{{ noto_sans_math_default_version if ti_fonts | bool else '' }}"
 noto_sans_math_release_url: https://github.com/notofonts/math/releases/download
 fonts_dir: "{{ ti_home }}/.local/share/fonts"

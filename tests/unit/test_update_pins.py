@@ -75,8 +75,8 @@ with tempfile.TemporaryDirectory() as scratch:
           stops(lambda: up.add_tex_snapshot("2099-1-2", scratch, None))
           and stops(lambda: up.add_tex_snapshot("../../x", scratch, None)))
 
-    up.set_default("validators", "vnu_version", "99.1.1")
-    check("a default is set where it's a plain version", up.defaults("validators")["vnu_version"] == "99.1.1")
+    up.set_default("validators", "vnu_default_version", "99.1.1")
+    check("a default is set where it's a plain version", up.defaults("validators")["vnu_default_version"] == "99.1.1")
     check("and a default the file hasn't stops the script",
           stops(lambda: up.set_default("validators", "no_such_version", "1")))
 

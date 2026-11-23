@@ -12,35 +12,54 @@
   become: "{{ ti_user != ansible_facts['user_id'] }}"
   become_user: "{{ ti_user }}"
   vars:
+    py39: "{{ developer_python39_version | default('', true) | string }}"
+    uv: "{{ uv_version | default('', true) | string }}"
     pins_uv: "{{ (ti_pins.uv | default({})) | combine(uv_pins) }}"
-    uv_dir: "{{ ti_opt_dir }}/uv-{{ uv_version }}"
+    uv_dir: "{{ ti_opt_dir }}/uv-{{ uv }}"
+    uv_python_dir: "{{ ti_opt_dir }}/uv-python"
     uv_env:
       # uv's own folders, so that a uv of the person's own, its settings, and
       # its Pythons are left alone
       UV_NO_CONFIG: "1"
       UV_CACHE_DIR: "{{ ti_cache_dir }}/uv"
-      UV_PYTHON_INSTALL_DIR: "{{ ti_opt_dir }}/uv-python"
+      UV_PYTHON_INSTALL_DIR: "{{ uv_python_dir }}"
       UV_PYTHON_BIN_DIR: "{{ ti_bin_dir }}"
   block:
     - name: Read the pinned checksums and commits
       ansible.builtin.include_vars: pins.yml
 
-    - name: Install Python 3.9
-      when: developer_python39 | bool
+    - name: Note that Python 3.9 is wanted and none is named
+      when: developer_python39 | bool and py39 | length == 0
+      ansible.builtin.set_fact:
+        ti_warnings: >-
+          {{ ti_warnings | default([]) + ["developer_python39 is on, but
+          developer_python39_version is empty, so the portability suite can't run under
+          Python 3.9: set it, or developer_python39 to false."] }}
+
+    - name: Stop on a Python 3.9 without the uv that installs it
+      ansible.builtin.assert:
+        that: py39 | length == 0 or uv | length > 0
+        fail_msg: >-
+          developer_python39_version is {{ py39 }}, but uv installs it: set
+          uv_version too, or developer_python39_version to "".
+        quiet: true
+
+    - name: Install uv
+      when: uv | length > 0
       block:
         - name: Stop on a uv with no pinned checksum
           ansible.builtin.assert:
-            that: uv_version in pins_uv
+            that: uv in pins_uv
             fail_msg: >-
-              uv {{ uv_version }} has no pinned checksum here. Give one you trust in
-              the inventory, as ti_pins: {uv: {"{{ uv_version }}": <sha256>}}.
+              uv {{ uv }} has no pinned checksum here. Give one you trust in
+              the inventory, as ti_pins: {uv: {"{{ uv }}": <sha256>}}.
             quiet: true
 
         - name: Download uv, refused unless its SHA-256 matches
           ansible.builtin.get_url:
-            url: "{{ uv_release_url }}/{{ uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
-            dest: "{{ ti_cache_dir }}/uv-{{ uv_version }}-x86_64-unknown-linux-gnu.tar.gz"
-            checksum: "sha256:{{ pins_uv[uv_version] }}"
+            url: "{{ uv_release_url }}/{{ uv }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+            dest: "{{ ti_cache_dir }}/uv-{{ uv }}-x86_64-unknown-linux-gnu.tar.gz"
+            checksum: "sha256:{{ pins_uv[uv] }}"
             mode: "0644"
           register: uv_got
           until: uv_got is not oerforge.textbookimprover.retryable
@@ -55,35 +74,55 @@
 
         - name: Unpack uv
           ansible.builtin.unarchive:
-            src: "{{ ti_cache_dir }}/uv-{{ uv_version }}-x86_64-unknown-linux-gnu.tar.gz"
+            src: "{{ ti_cache_dir }}/uv-{{ uv }}-x86_64-unknown-linux-gnu.tar.gz"
             dest: "{{ uv_dir }}"
             remote_src: true
             extra_opts: [--strip-components=1]
             creates: "{{ uv_dir }}/uv"
 
+        - name: Remove the uvs no longer asked for
+          ansible.builtin.import_role:
+            name: oerforge.textbookimprover.base
+            tasks_from: old_versions
+          vars:
+            old_versions_what: uv
+            old_versions_in: "{{ ti_opt_dir }}"
+            old_versions_name: 'uv-[0-9][^/]*'
+            old_versions_keep: ["{{ uv_dir }}"]
+            old_versions_cache: 'uv-[0-9][^/]*-x86_64-unknown-linux-gnu\.tar\.gz'
+            old_versions_cache_keep: ["uv-{{ uv }}-x86_64-unknown-linux-gnu.tar.gz"]
+
+    - name: Install Python 3.9
+      when: py39 | length > 0
+      block:
         # uv checks each build it downloads against the SHA-256 in its own
         # table, so the pinned uv decides which 3.9 comes and what it must be.
-        - name: Install Python 3.9 with it, linked as python3.9, at {{ developer_python39_version }}
+        - name: Install Python 3.9 with it, linked as python3.9, at {{ py39 }}
           ansible.builtin.command:
-            argv:
-              - "{{ uv_dir }}/uv"
-              - python
-              - install
-              - --no-progress
-              - "{{ developer_python39_version }}"
+            # with developer_python39 off, not linked as python3.9
+            argv: >-
+              {{ [uv_dir ~ '/uv', 'python', 'install', '--no-progress']
+                 + ([] if developer_python39 | bool else ['--no-bin']) + [py39] }}
           environment: "{{ uv_env }}"
           register: developer_uv_python
           changed_when: "'Installed Python' in developer_uv_python.stderr"
 
+        - name: Find the Python it installed
+          ansible.builtin.command:
+            argv: ["{{ uv_dir }}/uv", python, find, --managed-python, "{{ py39 }}"]
+          environment: "{{ uv_env }}"
+          register: developer_python39_path
+          changed_when: false
+
         - name: Ask it its version
           ansible.builtin.command:
-            argv: ["{{ ti_bin_dir }}/python3.9", --version]
+            argv: ["{{ developer_python39_path.stdout | trim }}", --version]
           register: developer_python39_said
           changed_when: false
 
         - name: Check that it's the version asked for
           ansible.builtin.assert:
-            that: developer_python39_said.stdout == 'Python ' ~ developer_python39_version
+            that: developer_python39_said.stdout == 'Python ' ~ py39
             fail_msg: "{{ ti_bin_dir }}/python3.9 says {{ developer_python39_said.stdout }}."
             success_msg: "{{ developer_python39_said.stdout }}, for the portability suite"
 
@@ -105,20 +144,50 @@
             {{ developer_uv_pythons.stdout | from_json
                | selectattr('path', 'string')
                | selectattr('path', 'match', (uv_env.UV_PYTHON_INSTALL_DIR | regex_escape) ~ '/')
-               | rejectattr('version', 'equalto', developer_python39_version)
+               | rejectattr('version', 'equalto', py39)
                | map(attribute='key') | unique | list }}
 
-        - name: Remove the uvs no longer asked for
-          ansible.builtin.import_role:
-            name: oerforge.textbookimprover.base
-            tasks_from: old_versions
-          vars:
-            old_versions_what: uv
-            old_versions_in: "{{ ti_opt_dir }}"
-            old_versions_name: 'uv-[0-9][^/]*'
-            old_versions_keep: ["{{ uv_dir }}"]
-            old_versions_cache: 'uv-[0-9][^/]*-x86_64-unknown-linux-gnu\.tar\.gz'
-            old_versions_cache_keep: ["uv-{{ uv_version }}-x86_64-unknown-linux-gnu.tar.gz"]
+        # With developer_python39 off, a Python named by its version is
+        # installed but not linked, so the portability suite doesn't find it.
+        - name: Look at the python3.9 link
+          ansible.builtin.stat:
+            path: "{{ ti_bin_dir }}/python3.9"
+            get_checksum: false
+          register: developer_python39_link
+
+        - name: Take it out, if Python 3.9 isn't wanted
+          when:
+            - not developer_python39 | bool
+            - developer_python39_link.stat.islnk | default(false)
+            - (developer_python39_link.stat.lnk_target | regex_replace('/+', '/')) is match((uv_python_dir | regex_replace('/+', '/') | regex_escape) ~ '/')
+          ansible.builtin.file:
+            path: "{{ ti_bin_dir }}/python3.9"
+            state: absent
+
+    # uv's Pythons are in a folder of the collection's own; with no Python
+    # 3.9 asked for, all of it goes, and with no uv, every uv.
+    - name: Remove uv's Pythons, if none is asked for
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: Python
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: uv-python
+        old_versions_keep: "{{ [uv_python_dir] if py39 | length > 0 else [] }}"
+
+    - name: Remove every uv, if none is asked for
+      when: uv | length == 0
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: uv
+        old_versions_in: "{{ ti_opt_dir }}"
+        old_versions_name: 'uv-[0-9][^/]*'
+        old_versions_keep: []
+        old_versions_cache: 'uv-[0-9][^/]*-x86_64-unknown-linux-gnu\.tar\.gz'
+        old_versions_cache_keep: []
 
     - name: Clone OpenStax's cookbook at the ported commit
       when: developer_cookbook | bool

@@ -167,7 +167,7 @@
 
     - name: Look for the role's mark on it
       ansible.builtin.stat:
-        path: "{{ tex_unpacked_marker if tex_distribution == 'tinytex' else tex_marker }}"
+        path: "{{ tex_unpacked_marker if tex_kind == 'tinytex' else tex_marker }}"
       register: tex_made
 
     - name: Stop on a TeX newer than the snapshot that the role didn't install

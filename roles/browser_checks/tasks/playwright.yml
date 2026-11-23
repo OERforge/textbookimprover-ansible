@@ -2,6 +2,23 @@
   ansible.builtin.command:
     argv: [/usr/bin/python3, -m, venv, --system-site-packages, "{{ browser_checks_venv }}"]
     creates: "{{ browser_checks_venv }}/bin/python"
+  register: browser_checks_venv_made
+
+# Marked as the collection's, to be removed when Playwright isn't asked for,
+# only where the play made it or it's in the collection's own place: one of
+# the person's own, named by browser_checks_venv, is never marked.
+- name: Mark it as this collection's
+  when: >-
+    browser_checks_venv_made is changed
+    or (browser_checks_venv | regex_replace('/+', '/') | regex_replace('/$', ''))
+       == (ti_opt_dir | regex_replace('/+', '/') | regex_replace('/$', '')) ~ '/textbookimprover-venv'
+  ansible.builtin.copy:
+    content: >
+      Made by textbookimprover-ansible, which removes this environment once
+      Playwright isn't asked for.
+    dest: "{{ browser_checks_venv }}/.textbookimprover-ansible"
+    mode: "0644"
+    force: false
 
 - name: Write the pinned requirements
   ansible.builtin.template:
@@ -56,7 +73,7 @@
       - chromium_version in pins_chromium
       - pins_chromium[chromium_version].revision == chromium_revision
     fail_msg: >-
-      Playwright {{ playwright_version }} asks for Chromium {{ chromium_version }}
+      Playwright {{ pw }} asks for Chromium {{ chromium_version }}
       (revision {{ chromium_revision }}), which has no pin here. Give one you trust in the
       inventory, as ti_pins: {chromium: {"{{ chromium_version }}": {revision:
       "{{ chromium_revision }}", url: <address>, sha256: <sha256>, executable: <path in
@@ -110,7 +127,7 @@
 
     - name: Mark it as this collection's
       ansible.builtin.copy:
-        content: "Chromium {{ chromium_version }}, for Playwright {{ playwright_version }}\n"
+        content: "Chromium {{ chromium_version }}, for Playwright {{ pw }}\n"
         dest: "{{ chromium_dir }}/.textbookimprover-ansible"
         mode: "0644"
 

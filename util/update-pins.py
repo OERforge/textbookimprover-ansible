@@ -16,7 +16,7 @@ vars/pins.yml, so each new pin arrives as a change to review. A pin already
 written is never replaced: a version already pinned is checked against its
 pin instead, and a difference stops the script. "verify" does that for a
 pinned version without adding anything. With --default, "add" also makes
-the version the role's default, where the default is a plain version.
+the version the role's default (its *_default_version setting).
 
 Downloads go into a temporary folder that's removed afterward. GITHUB_TOKEN,
 if set, is sent to GitHub's API, which otherwise allows few requests an hour,
@@ -304,7 +304,7 @@ def add_tinytex(v, folder, opts):
     tarball("tex", "tinytex_pins", f"{base}/{v}/TinyTeX-linux-x86_64-{v}.tar.xz", v, folder, opts,
             github=("rstudio/tinytex-releases", v))
     if opts.default:
-        set_default("tex", "tinytex_version", v)
+        set_default("tex", "tinytex_default_version", v)
 
 
 def add_tex_snapshot(v, folder, opts):
@@ -352,7 +352,7 @@ def add_uv(v, folder, opts):
     tarball("developer", "uv_pins", url, v, folder, opts, github=("astral-sh/uv", v),
             sha256_file=url + ".sha256")
     if opts.default:
-        set_default("developer", "uv_version", v)
+        set_default("developer", "uv_default_version", v)
 
 
 def add_epubcheck(v, folder, opts):
@@ -360,7 +360,7 @@ def add_epubcheck(v, folder, opts):
     tarball("validators", "epubcheck_pins", f"{base}/v{v}/epubcheck-{v}.zip", v, folder, opts,
             github=("w3c/epubcheck", f"v{v}"))
     if opts.default:
-        set_default("validators", "epubcheck_version", v)
+        set_default("validators", "epubcheck_default_version", v)
 
 
 def add_noto_sans_math(v, folder, opts):
@@ -369,7 +369,7 @@ def add_noto_sans_math(v, folder, opts):
     tarball("fonts", "noto_sans_math_pins", f"{base}/{tag}/{tag}.zip", v, folder, opts,
             github=("notofonts/math", tag))
     if opts.default:
-        set_default("fonts", "noto_sans_math_version", v)
+        set_default("fonts", "noto_sans_math_default_version", v)
 
 
 def add_vnu(v, folder, opts):
@@ -382,7 +382,7 @@ def add_vnu(v, folder, opts):
     say(f"  vnu-jar-{v}.tgz: SHA-256 {sha}; npm's SHA-512 matches")
     settle("validators", "vnu_pins", v, sha, single=sha)
     if opts.default:
-        set_default("validators", "vnu_version", v)
+        set_default("validators", "vnu_default_version", v)
 
 
 def add_verapdf(v, folder, opts):
@@ -404,7 +404,7 @@ def add_verapdf(v, folder, opts):
         say(f"  note: verapdf_wcag_files has nothing for {v}: its WCAG modules are pinned by hand, "
             f"as the pins' comment says, before it can be the default")
     elif opts.default:
-        set_default("validators", "verapdf_version", v)
+        set_default("validators", "verapdf_default_version", v)
 
 
 def add_node(v, folder, opts):
@@ -436,7 +436,7 @@ def add_node(v, folder, opts):
     value = {"sha256": sha, "signer": signer}
     settle("browser_checks", "node_pins", v, value, [f"sha256: {sha}", f"signer: {signer}"])
     if opts.default:
-        set_default("browser_checks", "node_version", v)
+        set_default("browser_checks", "node_default_version", v)
 
 
 def add_playwright(v, folder, opts):
@@ -510,7 +510,7 @@ def add_playwright(v, folder, opts):
     settle("browser_checks", "playwright_pins", v, {"wheel": sha, "greenlet": g},
            [f"wheel: {sha}", f'greenlet: "{g}"'])
     if opts.default:
-        set_default("browser_checks", "playwright_version", v)
+        set_default("browser_checks", "playwright_default_version", v)
 
 
 def add_ace(v, folder, opts):
@@ -554,7 +554,7 @@ def add_ace(v, folder, opts):
             shutil.copy(os.path.join(work, n), os.path.join(target, n))
         say(f"  written: roles/browser_checks/files/ace/{v}/")
     if opts.default:
-        set_default("browser_checks", "ace_version", v)
+        set_default("browser_checks", "ace_default_version", v)
 
 
 def add_textbookimprover(v, folder, opts):
@@ -582,16 +582,16 @@ def newest_tag(repository, prefix=""):
 def check(opts):
     current = {
         "pandoc": max(pins("pandoc")["pandoc_pins"], key=version_key),
-        "tinytex": defaults("tex")["tinytex_version"],
+        "tinytex": defaults("tex")["tinytex_default_version"],
         "tex_snapshot": defaults("tex")["tex_snapshot"],
-        "uv": defaults("developer")["uv_version"],
-        "epubcheck": defaults("validators")["epubcheck_version"],
-        "vnu": defaults("validators")["vnu_version"],
-        "verapdf": defaults("validators")["verapdf_version"],
-        "node": defaults("browser_checks")["node_version"],
-        "playwright": defaults("browser_checks")["playwright_version"],
-        "ace": defaults("browser_checks")["ace_version"],
-        "noto_sans_math": defaults("fonts")["noto_sans_math_version"],
+        "uv": defaults("developer")["uv_default_version"],
+        "epubcheck": defaults("validators")["epubcheck_default_version"],
+        "vnu": defaults("validators")["vnu_default_version"],
+        "verapdf": defaults("validators")["verapdf_default_version"],
+        "node": defaults("browser_checks")["node_default_version"],
+        "playwright": defaults("browser_checks")["playwright_default_version"],
+        "ace": defaults("browser_checks")["ace_default_version"],
+        "noto_sans_math": defaults("fonts")["noto_sans_math_default_version"],
         "textbookimprover": max(pins("textbookimprover")["textbookimprover_pins"], key=version_key),
     }
     newest = {

@@ -1,5 +1,6 @@
 - name: Install the libraries and fonts the browser needs
   tags: [system]
+  when: playwright_version | default('', true) | string | length > 0
   become: true
   ansible.builtin.apt:
     name: "{{ query('oerforge.textbookimprover.bindep', profiles=['browser']) }}"
@@ -12,50 +13,79 @@
   become: "{{ ti_user != ansible_facts['user_id'] }}"
   become_user: "{{ ti_user }}"
   vars:
+    pw: "{{ playwright_version | default('', true) | string }}"
+    nd: "{{ node_version | default('', true) | string }}"
+    ac: "{{ ace_version | default('', true) | string }}"
+    # With the switches off, what's named by its version is installed, but
+    # TextbookImprover isn't pointed at it: no shell settings, no links.
+    wired: "{{ ti_browser_checks | bool and pw | length > 0 }}"
+    wired_ace: "{{ ti_browser_checks | bool and browser_checks_ace | bool and ac | length > 0 }}"
     pins_playwright: "{{ (ti_pins.playwright | default({})) | combine(playwright_pins) }}"
     pins_greenlet: "{{ (ti_pins.greenlet | default({})) | combine(greenlet_pins) }}"
     pins_chromium: "{{ (ti_pins.chromium | default({})) | combine(chromium_pins) }}"
     pins_node: "{{ (ti_pins.node | default({})) | combine(node_pins) }}"
-    node_dir: "{{ ti_opt_dir }}/node-v{{ node_version }}-linux-x64"
-    ace_dir: "{{ ti_opt_dir }}/ace-{{ ace_version }}"
+    node_dir: "{{ ti_opt_dir }}/node-v{{ nd }}-linux-x64"
+    ace_dir: "{{ ti_opt_dir }}/ace-{{ ac }}"
   block:
     - name: Read the pinned checksums
       ansible.builtin.include_vars: pins.yml
 
+    - name: Note what the browser checks are wanted for and lack
+      when: item.wanted | bool and item.version | length == 0
+      ansible.builtin.set_fact:
+        ti_warnings: >-
+          {{ ti_warnings | default([]) + [item.switch ~ " is on, but " ~ item.name ~ " is
+          empty, so " ~ item.lacks ~ ": set it, or " ~ item.switch ~ " to false."] }}
+      loop:
+        - {name: playwright_version, version: "{{ pw }}", wanted: "{{ ti_browser_checks }}",
+           switch: ti_browser_checks, lacks: "--wcag can't check pages or presentations"}
+        - {name: ace_version, version: "{{ ac }}", wanted: "{{ ti_browser_checks | bool and browser_checks_ace | bool }}",
+           switch: browser_checks_ace, lacks: "--wcag can't check EPUBs with Ace"}
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Stop on Ace without what it runs with
+      ansible.builtin.assert:
+        that: ac | length == 0 or (nd | length > 0 and pw | length > 0)
+        fail_msg: >-
+          ace_version is {{ ac }}, but Ace runs on Node with Playwright's Chromium:
+          set node_version and playwright_version too, or ace_version to "".
+        quiet: true
+
     - name: Stop on a version with no pinned checksum
       ansible.builtin.assert:
         that:
-          - playwright_version in pins_playwright
-          - pins_playwright[playwright_version].greenlet in pins_greenlet
-          - not browser_checks_ace | bool or node_version in pins_node
-          - not browser_checks_ace | bool or (role_path ~ '/files/ace/' ~ ace_version ~ '/package-lock.json') is exists
+          - pw | length == 0 or pw in pins_playwright
+          - pw | length == 0 or pins_playwright[pw].greenlet in pins_greenlet
+          - nd | length == 0 or nd in pins_node
+          - ac | length == 0 or (role_path ~ '/files/ace/' ~ ac ~ '/package-lock.json') is exists
         fail_msg: >-
-          A version here has no pins (Playwright {{ playwright_version }}, Node
-          {{ node_version }}, Ace {{ ace_version }}). Give ones you trust in the inventory,
-          as ti_pins: {playwright: {"<version>": {wheel: <sha256>, greenlet: "<version>"}},
-          greenlet: {"<version>": [<sha256>, ...]}, node: {"<version>": {sha256: <sha256>,
-          signer: <fingerprint>}}}. Ace is known only at the versions in files/ace/; set
-          browser_checks_ace to false for none.
+          A version here has no pins (Playwright {{ pw }}, Node {{ nd }}, Ace {{ ac }}).
+          Give ones you trust in the inventory, as ti_pins: {playwright: {"<version>":
+          {wheel: <sha256>, greenlet: "<version>"}}, greenlet: {"<version>": [<sha256>,
+          ...]}, node: {"<version>": {sha256: <sha256>, signer: <fingerprint>}}}. Ace is
+          known only at the versions in files/ace/; set ace_version to "" for none.
         quiet: true
 
     - name: Install Playwright and its Chromium
+      when: pw | length > 0
       ansible.builtin.import_tasks: playwright.yml
 
-    - name: Install Node and Ace
-      when: browser_checks_ace | bool
-      block:
-        - name: Install Node
-          ansible.builtin.import_tasks: node.yml
+    - name: Install Node
+      when: nd | length > 0
+      ansible.builtin.import_tasks: node.yml
 
-        - name: Install Ace
-          ansible.builtin.import_tasks: ace.yml
+    - name: Install Ace
+      when: ac | length > 0
+      ansible.builtin.import_tasks: ace.yml
 
-    - name: Tell TextbookImprover where they are
+    - name: Tell TextbookImprover where they are, if they're wanted
       ansible.builtin.blockinfile:
         path: "{{ ti_shell_rc }}"
         create: true
         mode: "0644"
         marker: "# {mark} textbookimprover-ansible: browser checks"
+        state: "{{ 'present' if wired | bool else 'absent' }}"
         block: |
           export PLAYWRIGHT_BROWSERS_PATH="{{ browser_checks_browsers }}"
           {% if browser_checks_venv_on_path | bool %}
@@ -64,11 +94,50 @@
             *) export PATH="{{ browser_checks_venv }}/bin:$PATH" ;;
           esac
           {% endif %}
-          {% if browser_checks_ace | bool %}
+          {% if wired_ace | bool %}
           export PUPPETEER_EXECUTABLE_PATH="{{ chromium_executable }}"
           {% endif %}
 
+    - name: Link node, npm, npx, and ace-puppeteer where the shell finds them, if Ace is wanted
+      when: wired_ace | bool
+      ansible.builtin.file:
+        src: "{{ item.src }}"
+        dest: "{{ ti_bin_dir }}/{{ item.name }}"
+        state: link
+      loop:
+        - {name: node, src: "{{ node_dir }}/bin/node"}
+        - {name: npm, src: "{{ node_dir }}/bin/npm"}
+        - {name: npx, src: "{{ node_dir }}/bin/npx"}
+        - {name: ace-puppeteer, src: "{{ ace_dir }}/node_modules/@daisy/ace/bin/ace-puppeteer.js"}
+      loop_control:
+        label: "{{ item.name }}"
+
+    # Only a link into a Node or an Ace of the collection's: a node of the
+    # person's own there is left alone.
+    - name: Look at those links, if Ace isn't wanted
+      when: not wired_ace | bool
+      ansible.builtin.stat:
+        path: "{{ ti_bin_dir }}/{{ item }}"
+        get_checksum: false
+      register: browser_checks_links
+      loop: [node, npm, npx, ace-puppeteer]
+
+    - name: Take out those that are the collection's
+      when:
+        - not wired_ace | bool
+        - item.stat.islnk | default(false)
+        - >-
+          (item.stat.lnk_target | regex_replace('/+', '/'))
+          is match((ti_opt_dir | regex_replace('/+', '/') | regex_escape) ~ '/(node-v[0-9][^/]*-linux-x64|ace-[0-9][^/]*)/')
+      ansible.builtin.file:
+        path: "{{ ti_bin_dir }}/{{ item.item }}"
+        state: absent
+      loop: "{{ browser_checks_links.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item }}"
+
     - name: Open a page in the browser
+      when: pw | length > 0
       ansible.builtin.command:
         argv:
           - "{{ browser_checks_venv }}/bin/python"
@@ -88,28 +157,29 @@
       changed_when: false
 
     - name: Check that it's the browser installed
+      when: pw | length > 0
       ansible.builtin.assert:
         that: browser_checks_launch.stdout == chromium_version ~ ' probe'
         fail_msg: "Playwright's Chromium said {{ browser_checks_launch.stdout | truncate(200) }}, not {{ chromium_version }}."
-        success_msg: "Playwright {{ playwright_version }}'s Chromium {{ chromium_version }} opened a page."
+        success_msg: "Playwright {{ pw }}'s Chromium {{ chromium_version }} opened a page."
 
     - name: Ask Ace its version
-      when: browser_checks_ace | bool
+      when: ac | length > 0
       ansible.builtin.command:
-        argv: ["{{ ti_bin_dir }}/ace-puppeteer", --version]
+        argv: ["{{ ace_dir }}/node_modules/@daisy/ace/bin/ace-puppeteer.js", --version]
       environment:
         PATH: "{{ node_dir }}/bin:{{ ansible_facts['env']['PATH'] }}"
       register: browser_checks_ace_said
       changed_when: false
 
     - name: Check that it's the Ace installed
-      when: browser_checks_ace | bool
+      when: ac | length > 0
       ansible.builtin.assert:
-        that: browser_checks_ace_said.stdout | trim == ace_version
-        fail_msg: "ace-puppeteer says {{ browser_checks_ace_said.stdout | truncate(200) }}, not {{ ace_version }}."
-        success_msg: "Ace {{ ace_version }} on Node {{ node_version }}."
+        that: browser_checks_ace_said.stdout | trim == ac
+        fail_msg: "Ace says {{ browser_checks_ace_said.stdout | truncate(200) }}, not {{ ac }}."
+        success_msg: "Ace {{ ac }} on Node {{ nd }}."
 
-    - name: Remove the Chromiums of Playwrights no longer asked for
+    - name: Remove the Chromiums no longer asked for
       ansible.builtin.import_role:
         name: oerforge.textbookimprover.base
         tasks_from: old_versions
@@ -117,13 +187,27 @@
         old_versions_what: Chromium
         old_versions_in: "{{ browser_checks_browsers }}"
         old_versions_name: 'chromium_headless_shell-[0-9]+'
-        old_versions_keep: ["{{ chromium_dir }}"]
+        old_versions_keep: "{{ [chromium_dir] if pw | length > 0 else [] }}"
         old_versions_mark: false
         old_versions_cache: 'chrome-headless-shell-[0-9][^/]*-linux64\.zip'
-        old_versions_cache_keep: ["chrome-headless-shell-{{ chromium_version }}-linux64.zip"]
+        old_versions_cache_keep: >-
+          {{ ['chrome-headless-shell-' ~ chromium_version ~ '-linux64.zip'] if pw | length > 0 else [] }}
+
+    # Playwright's environment, if the collection made it (playwright.yml
+    # marks it); anything put in it by hand goes with it. One of the person's
+    # own, named by browser_checks_venv, has no mark and is kept.
+    - name: Remove Playwright's environment, if Playwright isn't asked for
+      ansible.builtin.import_role:
+        name: oerforge.textbookimprover.base
+        tasks_from: old_versions
+      vars:
+        old_versions_what: Playwright
+        old_versions_in: "{{ browser_checks_venv | dirname }}"
+        old_versions_name: "{{ browser_checks_venv | basename | regex_escape }}"
+        old_versions_keep: "{{ [browser_checks_venv] if pw | length > 0 else [] }}"
+        old_versions_mark: false
 
     - name: Remove the Nodes no longer asked for
-      when: browser_checks_ace | bool
       ansible.builtin.import_role:
         name: oerforge.textbookimprover.base
         tasks_from: old_versions
@@ -131,12 +215,11 @@
         old_versions_what: Node
         old_versions_in: "{{ ti_opt_dir }}"
         old_versions_name: 'node-v[0-9][^/]*-linux-x64'
-        old_versions_keep: ["{{ node_dir }}"]
+        old_versions_keep: "{{ [node_dir] if nd | length > 0 else [] }}"
         old_versions_cache: 'node-v[0-9][^/]*-linux-x64\.tar\.xz'
-        old_versions_cache_keep: ["node-v{{ node_version }}-linux-x64.tar.xz"]
+        old_versions_cache_keep: "{{ ['node-v' ~ nd ~ '-linux-x64.tar.xz'] if nd | length > 0 else [] }}"
 
     - name: Remove the Aces no longer asked for
-      when: browser_checks_ace | bool
       ansible.builtin.import_role:
         name: oerforge.textbookimprover.base
         tasks_from: old_versions
@@ -144,5 +227,5 @@
         old_versions_what: Ace
         old_versions_in: "{{ ti_opt_dir }}"
         old_versions_name: 'ace-[0-9][^/]*'
-        old_versions_keep: ["{{ ace_dir }}"]
+        old_versions_keep: "{{ [ace_dir] if ac | length > 0 else [] }}"
         old_versions_mark: false

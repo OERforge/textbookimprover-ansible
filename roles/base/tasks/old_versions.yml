@@ -23,18 +23,37 @@
 - name: "Take out the versions no longer asked for: {{ old_versions_what }}"
   when: old_versions_in is defined
   block:
+    - name: Look at the folders in use
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: false
+      register: old_versions_kept
+      loop: "{{ old_versions_keep }}"
+
     - name: "Mark the folders in use as this collection's: {{ old_versions_what }}"
-      when: old_versions_mark | default(true) | bool
+      when:
+        - old_versions_mark | default(true) | bool
+        - item.stat.isdir | default(false)
+        - not item.stat.islnk | default(false)
       ansible.builtin.copy:
         content: >
           Installed by textbookimprover-ansible, which removes this folder once
           another version is asked for in its place.
-        dest: "{{ item }}/.textbookimprover-ansible"
+        dest: "{{ item.item }}/.textbookimprover-ansible"
         mode: "0644"
         force: false
-      loop: "{{ old_versions_keep }}"
+      loop: "{{ old_versions_kept.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Look at the folder they're in
+      ansible.builtin.stat:
+        path: "{{ old_versions_in }}"
+        get_checksum: false
+      register: old_versions_parent
 
     - name: "Find the folders this collection marked: {{ old_versions_what }}"
+      when: old_versions_parent.stat.isdir | default(false)
       ansible.builtin.find:
         paths: "{{ old_versions_in }}"
         patterns: [.textbookimprover-ansible]
@@ -53,20 +72,12 @@
         folder: "^{{ in_folder | regex_escape }}/({{ old_versions_name }})$"
       ansible.builtin.set_fact:
         old_versions_gone: >-
-          {{ old_versions_marks.files | map(attribute='path') | map('dirname')
+          {{ old_versions_marks.files | default([]) | map(attribute='path') | map('dirname')
              | map('regex_replace', '/+', '/') | select('match', folder)
              | reject('in', keep) | list }}
 
     # And by what each is on disk, which no way of writing a path changes:
     # a folder that's one of those in use is never taken for an old one.
-    - name: Look at the folders in use
-      when: old_versions_gone | length > 0
-      ansible.builtin.stat:
-        path: "{{ item }}"
-        get_checksum: false
-      register: old_versions_kept
-      loop: "{{ old_versions_keep }}"
-
     - name: Look at those to go
       when: old_versions_gone | length > 0
       ansible.builtin.stat:

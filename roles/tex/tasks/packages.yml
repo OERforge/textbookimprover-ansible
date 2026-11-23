@@ -40,7 +40,7 @@
           {{ (tex_root ~ " is newer than the repository it uses, which tlmgr won't read."
               ~ (' TinyTeX ' ~ tinytex_version ~ ' is newer than the snapshot: set tex_snapshot'
                  ~ ' to a later date, or tinytex_version to an earlier release.'
-                 if tex_dated | bool and tex_distribution == 'tinytex' else ''))
+                 if tex_dated | bool and tex_kind == 'tinytex' else ''))
              if tex_refused in tex_check.stderr
              else "tlmgr can't verify the repository: " ~ (tex_check.stderr or tex_check.stdout) }}
         quiet: true

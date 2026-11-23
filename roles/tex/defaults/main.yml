@@ -1,13 +1,22 @@
-# Which TeX to install, in the user's home, so that tlmgr needs no sudo:
-#   tinytex  TinyTeX's bundle, a small TeX Live, with the installation page's
-#            packages added: what TextbookImprover's installation page tests,
-#            so a machine with it shows when that page's list leaves one out
-#   texlive  TeX Live from its own installer, every package in the scheme
-#            (full by default: several gigabytes; 17 minutes here without its
-#            documentation and sources, which the role leaves out)
-# TinyTeX for the user profile; TeX Live for the developer profile, whose
-# languages the suites need.
-tex_distribution: "{{ 'texlive' if ti_profile == 'developer' else 'tinytex' }}"
+# Which TeX to install, in the user's home, so that tlmgr needs no sudo: one
+# of the two, named by its version, the other "" (both named stops the run):
+#   tinytex_version  TinyTeX's release: its bundle, a small TeX Live, with
+#                    the installation page's packages added: what
+#                    TextbookImprover's installation page tests, so a machine
+#                    with it shows when that page's list leaves one out
+#   texlive_version  TeX Live's year: from its own installer, every package
+#                    in the scheme (full by default: several gigabytes; 17
+#                    minutes here without its documentation and sources,
+#                    which the role leaves out)
+# With ti_tex on, TinyTeX for the user profile and TeX Live for the
+# developer profile, whose languages the suites need; with it off, neither.
+# A TeX the role installed and no longer named is removed once the one
+# named is in. The *_default_version settings are the collection's, which
+# util/update-pins.py sets.
+tinytex_default_version: "v2026.11"
+texlive_default_version: "2026"
+tinytex_version: "{{ tinytex_default_version if ti_tex | bool and ti_profile != 'developer' else '' }}"
+texlive_version: "{{ texlive_default_version if ti_tex | bool and ti_profile == 'developer' else '' }}"
 
 # Which day's TeX Live packages: a date, for that day's snapshot of TeX
 # Live's repository, which texlive.info keeps, or latest, for the packages of
@@ -116,18 +125,18 @@ tex_font_packages: "{{ ['noto-emoji'] if ti_fonts | bool else [] }}"
 # The oldest LaTeX a PDF target builds with.
 tex_latex_minimum: "2026-06-01"
 
-# TinyTeX's release; its bundle's SHA-256 is pinned in vars/pins.yml.
-tinytex_version: "v2026.11"
+# Where TinyTeX's releases are; each bundle's SHA-256 is pinned in
+# vars/pins.yml.
 tinytex_release_url: https://github.com/rstudio/tinytex-releases/releases/download
 
-# TeX Live from its own installer: the release, which the installer's
-# version has to match, the scheme, and where it goes.
-texlive_year: "2026"
+# TeX Live from its own installer: the scheme, and where it goes.
+# texlive_version (above) is its year, which the installer's has to match.
 texlive_scheme: full
 texlive_docs: false
 texlive_source: false
-texlive_dir: "{{ ti_opt_dir }}/texlive/{{ texlive_year }}"
+texlive_dir: "{{ ti_opt_dir }}/texlive/{{ texlive_version }}"
 
 # Where TeX is, and its commands, which the fonts role uses too.
-tex_root: "{{ ti_home ~ '/.TinyTeX' if tex_distribution == 'tinytex' else texlive_dir }}"
+tex_root: >-
+  {{ ti_home ~ '/.TinyTeX' if tex_kind == 'tinytex' else (texlive_dir if tex_kind == 'texlive' else '') }}
 tex_bin: "{{ tex_root }}/bin/x86_64-linux"

@@ -7,48 +7,70 @@
   become: "{{ ti_user != ansible_facts['user_id'] }}"
   become_user: "{{ ti_user }}"
   vars:
+    wanted: "{{ noto_sans_math_version | default('', true) | string }}"
+    # With ti_fonts off, a release named by its version is unpacked but not
+    # copied into the fonts folder, so nothing uses it.
+    wired: "{{ ti_fonts | bool and wanted | length > 0 }}"
     pins: "{{ (ti_pins.noto_sans_math | default({})) | combine(noto_sans_math_pins) }}"
-    zip: "NotoSansMath-v{{ noto_sans_math_version }}.zip"
-    unpacked: "{{ ti_opt_dir }}/noto-sans-math-{{ noto_sans_math_version }}"
+    zip: "NotoSansMath-v{{ wanted }}.zip"
+    unpacked: "{{ ti_opt_dir }}/noto-sans-math-{{ wanted }}"
     # The copy the installation page names: the book asks for the font by
     # this file's name, and the zip's otf copies are named otherwise.
     member: NotoSansMath/hinted/ttf/NotoSansMath-Regular.ttf
     installed: "{{ fonts_dir }}/NotoSansMath-Regular.ttf"
   block:
-    - name: Stop on a release with no pinned checksum
-      ansible.builtin.assert:
-        that: noto_sans_math_version in pins
-        fail_msg: >-
-          Noto Sans Math {{ noto_sans_math_version }} has no SHA-256 here. Give one you
-          trust in the inventory, as ti_pins: {noto_sans_math: {"{{ noto_sans_math_version }}": <sha256>}}.
-        quiet: true
+    - name: Note that the fonts are wanted and no release is named
+      when: ti_fonts | bool and wanted | length == 0
+      ansible.builtin.set_fact:
+        ti_warnings: >-
+          {{ ti_warnings | default([]) + ["ti_fonts is on, but noto_sans_math_version is
+          empty, so OpenStax's books' formulas have no Noto Sans Math: set it, or
+          ti_fonts to false."] }}
 
-    - name: Download the release, refused unless its SHA-256 matches
-      ansible.builtin.get_url:
-        url: "{{ noto_sans_math_release_url }}/NotoSansMath-v{{ noto_sans_math_version }}/{{ zip }}"
-        dest: "{{ ti_cache_dir }}/{{ zip }}"
-        checksum: "sha256:{{ pins[noto_sans_math_version] }}"
-        mode: "0644"
-      register: noto_sans_math_got
-      until: noto_sans_math_got is not oerforge.textbookimprover.retryable
-      retries: "{{ ti_download_retries }}"
-      delay: "{{ ti_download_delay }}"
+    - name: Unpack the release asked for
+      when: wanted | length > 0
+      block:
+        - name: Stop on a release with no pinned checksum
+          ansible.builtin.assert:
+            that: wanted in pins
+            fail_msg: >-
+              Noto Sans Math {{ wanted }} has no SHA-256 here. Give one you
+              trust in the inventory, as ti_pins: {noto_sans_math: {"{{ wanted }}": <sha256>}}.
+            quiet: true
 
-    - name: Make a folder for it
-      ansible.builtin.file:
-        path: "{{ unpacked }}"
-        state: directory
-        mode: "0755"
+        - name: Download the release, refused unless its SHA-256 matches
+          ansible.builtin.get_url:
+            url: "{{ noto_sans_math_release_url }}/NotoSansMath-v{{ wanted }}/{{ zip }}"
+            dest: "{{ ti_cache_dir }}/{{ zip }}"
+            checksum: "sha256:{{ pins[wanted] }}"
+            mode: "0644"
+          register: noto_sans_math_got
+          until: noto_sans_math_got is not oerforge.textbookimprover.retryable
+          retries: "{{ ti_download_retries }}"
+          delay: "{{ ti_download_delay }}"
 
-    - name: Take the font out of it
-      ansible.builtin.unarchive:
-        src: "{{ ti_cache_dir }}/{{ zip }}"
-        dest: "{{ unpacked }}"
-        remote_src: true
-        include: ["{{ member }}"]
-        creates: "{{ unpacked }}/{{ member }}"
+        - name: Make a folder for it
+          ansible.builtin.file:
+            path: "{{ unpacked }}"
+            state: directory
+            mode: "0755"
+
+        - name: Take the font out of it
+          ansible.builtin.unarchive:
+            src: "{{ ti_cache_dir }}/{{ zip }}"
+            dest: "{{ unpacked }}"
+            remote_src: true
+            include: ["{{ member }}"]
+            creates: "{{ unpacked }}/{{ member }}"
+
+        - name: Look at the release's copy
+          ansible.builtin.stat:
+            path: "{{ unpacked }}/{{ member }}"
+            checksum_algorithm: sha256
+          register: fonts_ours
 
     - name: Make the fonts folder
+      when: wired | bool
       ansible.builtin.file:
         path: "{{ fonts_dir }}"
         state: directory
@@ -60,13 +82,7 @@
         checksum_algorithm: sha256
       register: fonts_there
 
-    - name: Look at the release's copy
-      ansible.builtin.stat:
-        path: "{{ unpacked }}/{{ member }}"
-        checksum_algorithm: sha256
-      register: fonts_ours
-
-    - name: Find the releases this collection unpacked before
+    - name: Find the releases this collection unpacked
       ansible.builtin.find:
         paths: "{{ ti_opt_dir }}"
         patterns: ['^noto-sans-math-[0-9][^/]*$']
@@ -79,18 +95,23 @@
         path: "{{ item }}/{{ member }}"
         checksum_algorithm: sha256
       register: fonts_old
-      loop: "{{ fonts_releases.files | map(attribute='path') | reject('equalto', unpacked) | list }}"
+      loop: "{{ fonts_releases.files | map(attribute='path') | list }}"
+
+    - name: Note which copies are a release's
+      ansible.builtin.set_fact:
+        fonts_releases_copies: >-
+          {{ fonts_old.results | map(attribute='stat') | selectattr('checksum', 'defined')
+             | map(attribute='checksum') | list }}
 
     # A copy that's there already is kept, since it may be one of the
-    # person's own, unless it's an older release's, which this collection
-    # put there.
+    # person's own, unless it's a release's, which this collection put there.
     - name: Copy it into the fonts folder, unless a copy of another kind is there
-      when: >-
-        not fonts_there.stat.exists
-        or (fonts_there.stat.checksum != fonts_ours.stat.checksum
-            and fonts_there.stat.checksum in old_copies)
-      vars:
-        old_copies: "{{ fonts_old.results | map(attribute='stat') | selectattr('checksum', 'defined') | map(attribute='checksum') | list }}"
+      when:
+        - wired | bool
+        - >-
+          not fonts_there.stat.exists
+          or (fonts_there.stat.checksum != fonts_ours.stat.checksum
+              and fonts_there.stat.checksum in fonts_releases_copies)
       ansible.builtin.copy:
         src: "{{ unpacked }}/{{ member }}"
         dest: "{{ installed }}"
@@ -99,15 +120,25 @@
       register: fonts_copied
 
     - name: Say that another copy there is kept
-      when: fonts_copied is skipped and fonts_there.stat.exists and fonts_there.stat.checksum != fonts_ours.stat.checksum
+      when: wired | bool and fonts_copied is skipped and fonts_there.stat.exists and fonts_there.stat.checksum != fonts_ours.stat.checksum
       ansible.builtin.debug:
         msg: >-
-          {{ installed }} isn't Noto Sans Math {{ noto_sans_math_version }} as the release
+          {{ installed }} isn't Noto Sans Math {{ wanted }} as the release
           has it, and it's kept as it is. If it isn't a copy of your own you want,
           remove it and run the play again.
 
+    - name: Take the copy out of the fonts folder, if it's a release's and the fonts aren't wanted
+      when:
+        - not wired | bool
+        - fonts_there.stat.exists
+        - not fonts_there.stat.islnk
+        - fonts_there.stat.checksum | default('') in fonts_releases_copies
+      ansible.builtin.file:
+        path: "{{ installed }}"
+        state: absent
+
     - name: Have LuaTeX use it
-      when: ti_tex | bool
+      when: wired | bool and ti_tex | bool and tex_kind | default('') | length > 0
       environment:
         PATH: "{{ tex_bin }}:/usr/local/bin:/usr/bin:/bin"
       block:
@@ -274,6 +305,6 @@
         old_versions_what: Noto Sans Math
         old_versions_in: "{{ ti_opt_dir }}"
         old_versions_name: 'noto-sans-math-[0-9][^/]*'
-        old_versions_keep: ["{{ unpacked }}"]
+        old_versions_keep: "{{ [unpacked] if wanted | length > 0 else [] }}"
         old_versions_cache: 'NotoSansMath-v[0-9][^/]*\.zip'
-        old_versions_cache_keep: ["{{ zip }}"]
+        old_versions_cache_keep: "{{ [zip] if wanted | length > 0 else [] }}"

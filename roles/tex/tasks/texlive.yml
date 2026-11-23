@@ -127,10 +127,10 @@
 
     - name: Check that it's the release asked for
       ansible.builtin.assert:
-        that: ('version ' ~ texlive_year) in tex_installer_version.stdout
+        that: ('version ' ~ texlive_version) in tex_installer_version.stdout
         fail_msg: >-
           The installer installs {{ tex_installer_version.stdout_lines | last }},
-          not {{ texlive_year }}. Set texlive_year to match it.
+          not {{ texlive_version }}. Set texlive_version to match it.
         quiet: true
 
     - name: Write the installer's profile

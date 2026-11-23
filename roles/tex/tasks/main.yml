@@ -1,5 +1,6 @@
 - name: Install the system packages a PDF target needs
   tags: [system]
+  when: tex_kind | length > 0
   become: true
   ansible.builtin.apt:
     name: "{{ query('oerforge.textbookimprover.bindep', profiles=['pdf']) }}"
@@ -30,27 +31,55 @@
     # What tlmgr says when it won't read a repository older than the TeX
     tex_refused: seems to be older than the local installation
   block:
-    - name: Stop on a TeX the role doesn't know
+    - name: Stop on tex_distribution, which the versions have replaced
       ansible.builtin.assert:
-        that: tex_distribution in ['tinytex', 'texlive']
-        fail_msg: tex_distribution is {{ tex_distribution }}; it can be tinytex or texlive.
+        that: tex_distribution is not defined
+        fail_msg: >-
+          tex_distribution is gone: the TeX is the one whose version is set,
+          tinytex_version (TinyTeX's release, as v2026.11) or texlive_version
+          (TeX Live's year, as 2026), with the other "".
         quiet: true
+
+    - name: Stop on two TeXs
+      ansible.builtin.assert:
+        that: tex_tinytex_wanted | length == 0 or tex_texlive_wanted | length == 0
+        fail_msg: >-
+          tinytex_version is {{ tex_tinytex_wanted }} and texlive_version is
+          {{ tex_texlive_wanted }}, but only one TeX is put on PATH: set the
+          other to "".
+        quiet: true
+
+    - name: Check texlive_version
+      ansible.builtin.assert:
+        that: tex_texlive_wanted | length == 0 or tex_texlive_wanted is match('^[0-9]{4}$')
+        fail_msg: texlive_version is {{ tex_texlive_wanted }}; it's TeX Live's year, as 2026.
+        quiet: true
+
+    - name: Note that TeX is wanted and none is named
+      when: ti_tex | bool and tex_kind | length == 0
+      ansible.builtin.set_fact:
+        ti_warnings: >-
+          {{ ti_warnings | default([]) + ["ti_tex is on, but neither tinytex_version nor
+          texlive_version names a TeX, so TextbookImprover can't build a PDF: set one, or
+          ti_tex to false."] }}
 
     - name: Read the pinned checksums and TeX Live's key's fingerprint
       ansible.builtin.include_vars: pins.yml
 
     - name: Compare the TeX there with the snapshot asked for
+      when: tex_kind | length > 0
       ansible.builtin.import_tasks: snapshot.yml
 
     - name: Install TeX, and its packages, putting back the TeX put aside if that fails
+      when: tex_kind | length > 0
       block:
         - name: Install TinyTeX
           ansible.builtin.import_tasks: tinytex.yml
-          when: tex_distribution == 'tinytex'
+          when: tex_kind == 'tinytex'
 
         - name: Install TeX Live
           ansible.builtin.import_tasks: texlive.yml
-          when: tex_distribution == 'texlive'
+          when: tex_kind == 'texlive'
 
         - name: Install the packages
           ansible.builtin.import_tasks: packages.yml
@@ -93,12 +122,15 @@
                   if ansible_failed_result.stderr_lines | default([]) else '' }}.
               {{- (' The TeX there before is back in ' ~ tex_root ~ '.') if tex_aside | default(false) | bool else '' }}
 
-    - name: Put TeX's commands on the shell's PATH
+    # With ti_tex off, a TeX named by its version is installed but not put
+    # on PATH, so TextbookImprover doesn't use it.
+    - name: Put TeX's commands on the shell's PATH, if TeX is wanted
       ansible.builtin.blockinfile:
         path: "{{ ti_shell_rc }}"
         create: true
         mode: "0644"
         marker: "# {mark} textbookimprover-ansible: TeX"
+        state: "{{ 'present' if ti_tex | bool and tex_kind | length > 0 else 'absent' }}"
         block: |
           case ":$PATH:" in
             *":{{ tex_bin }}:"*) ;;
@@ -106,6 +138,7 @@
           esac
 
     - name: Ask LuaLaTeX its LaTeX's release
+      when: tex_kind | length > 0
       ansible.builtin.command:
         argv:
           - "{{ tex_bin }}/lualatex"
@@ -116,6 +149,7 @@
       changed_when: false
 
     - name: Check that it's recent enough for a PDF target
+      when: tex_kind | length > 0
       vars:
         found: "{{ (tex_format.stdout | regex_search('TI-FORMAT=([0-9-]+)', '\\1') or ['']) | first }}"
       ansible.builtin.assert:
@@ -125,27 +159,123 @@
           {{ tex_latex_minimum }} or later. Run again with -e tex_update=true.
         success_msg: LaTeX {{ found }}
 
-    # TinyTeX is installed in one place whatever its release, so only its
-    # bundles go; the one asked for is kept, to install it again from.
+    # TinyTeX is installed in one place whatever its release, so its bundles
+    # go but the one asked for, kept to install it again from; all of them
+    # when TinyTeX isn't asked for.
     - name: Remove TinyTeX's bundles no longer asked for
-      when: tex_distribution == 'tinytex'
       ansible.builtin.import_role:
         name: oerforge.textbookimprover.base
         tasks_from: old_versions
       vars:
         old_versions_what: TinyTeX
         old_versions_cache: 'TinyTeX-linux-x86_64-v[0-9][^/]*\.tar\.xz'
-        old_versions_cache_keep: ["TinyTeX-linux-x86_64-{{ tinytex_version }}.tar.xz"]
+        old_versions_cache_keep: >-
+          {{ ['TinyTeX-linux-x86_64-' ~ tex_tinytex_wanted ~ '.tar.xz'] if tex_tinytex_wanted | length > 0 else [] }}
 
-    # Each year's TeX Live has a folder of its own, marked once it's installed.
+    # A TinyTeX the role unpacked has its mark; one that was there before,
+    # installed by hand or for R's tinytex package, which uses the same
+    # folder, hasn't, and is kept.
+    - name: Take out a TinyTeX no longer asked for
+      when: tex_tinytex_wanted | length == 0
+      vars:
+        tinytex_root: "{{ ti_home }}/.TinyTeX"
+      block:
+        - name: Look for a TinyTeX
+          ansible.builtin.stat:
+            path: "{{ tinytex_root }}"
+          register: tex_old_tinytex
+
+        - name: Look for the role's mark on it
+          when: tex_old_tinytex.stat.isdir | default(false)
+          ansible.builtin.stat:
+            path: "{{ tinytex_root }}/.textbookimprover-ansible-unpacked"
+          register: tex_old_tinytex_mark
+
+        - name: Remove it, if the role installed it
+          when:
+            - tex_old_tinytex.stat.isdir | default(false)
+            - not tex_old_tinytex.stat.islnk | default(false)
+            - tex_old_tinytex_mark.stat.exists | default(false)
+          ansible.builtin.file:
+            path: "{{ tinytex_root }}"
+            state: absent
+
+        - name: Say that one the role didn't install is kept
+          when:
+            - tex_old_tinytex.stat.exists
+            - not tex_old_tinytex_mark.stat.exists | default(false)
+          ansible.builtin.debug:
+            msg: >-
+              {{ tinytex_root }} is a TinyTeX this collection didn't install, so it's
+              kept, though no TinyTeX is asked for. Remove it yourself if nothing
+              else uses it.
+
+    # Each year's TeX Live has a folder of its own, marked once it's
+    # installed; all of them go when TeX Live isn't asked for, each with the
+    # folder of its own the profile gave it in the home folder.
     - name: Remove the TeX Live years no longer asked for
-      when: tex_distribution == 'texlive'
       ansible.builtin.import_role:
         name: oerforge.textbookimprover.base
         tasks_from: old_versions
       vars:
         old_versions_what: TeX Live
-        old_versions_in: "{{ texlive_dir | dirname }}"
+        old_versions_in: "{{ ti_opt_dir }}/texlive"
         old_versions_name: '[0-9]{4}'
-        old_versions_keep: ["{{ texlive_dir }}"]
+        old_versions_keep: "{{ [texlive_dir] if tex_texlive_wanted | length > 0 else [] }}"
         old_versions_mark: false
+
+    - name: Remove the removed years' own folders in the home folder
+      ansible.builtin.file:
+        path: "{{ ti_home }}/.texlive{{ item | basename }}"
+        state: absent
+      when: (item | basename) is match('^[0-9]{4}$')
+      loop: "{{ old_versions_gone | default([]) }}"
+
+    # With no TeX Live left, the local tree its installer made beside the
+    # years goes too, if it holds nothing but the installer's empty folders
+    # and its index (ls-R), and then TeX Live's folder, if it's empty: a
+    # file of anyone's own there keeps both.
+    - name: Take out what's left of TeX Live, if none is asked for
+      when: tex_texlive_wanted | length == 0
+      vars:
+        texlive_parent: "{{ ti_opt_dir }}/texlive"
+      block:
+        - name: Look at TeX Live's folder and its local tree
+          ansible.builtin.stat:
+            path: "{{ item }}"
+            get_checksum: false
+          register: tex_leftover
+          loop: ["{{ texlive_parent }}", "{{ texlive_parent }}/texmf-local"]
+
+        - name: Look for anything in the local tree but folders and its index
+          when: tex_leftover.results[1].stat.isdir | default(false) and not tex_leftover.results[1].stat.islnk
+          ansible.builtin.find:
+            paths: "{{ texlive_parent }}/texmf-local"
+            recurse: true
+            hidden: true
+            file_type: any
+          register: tex_local_tree
+
+        - name: Remove the local tree, if that's all it holds
+          when:
+            - tex_local_tree is not skipped
+            - >-
+              tex_local_tree.files | rejectattr('isdir')
+              | rejectattr('path', 'equalto', texlive_parent ~ '/texmf-local/ls-R') | list | length == 0
+          ansible.builtin.file:
+            path: "{{ texlive_parent }}/texmf-local"
+            state: absent
+
+        - name: Look for anything left in TeX Live's folder
+          when: tex_leftover.results[0].stat.isdir | default(false) and not tex_leftover.results[0].stat.islnk
+          ansible.builtin.find:
+            paths: "{{ texlive_parent }}"
+            hidden: true
+            file_type: any
+          register: tex_parent_left
+
+        - name: Remove TeX Live's folder, if it's empty
+          when: tex_parent_left is not skipped and tex_parent_left.files | length == 0
+          ansible.builtin.file:
+            path: "{{ texlive_parent }}"
+            state: absent

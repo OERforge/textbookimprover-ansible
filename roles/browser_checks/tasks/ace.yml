@@ -6,7 +6,7 @@
 
 - name: Copy the package list and its lock file
   ansible.builtin.copy:
-    src: ace/{{ ace_version }}/{{ item }}
+    src: ace/{{ ac }}/{{ item }}
     dest: "{{ ace_dir }}/{{ item }}"
     mode: "0644"
   loop: [package.json, package-lock.json]
@@ -45,12 +45,6 @@
 
     - name: Mark them installed
       ansible.builtin.copy:
-        content: "Ace {{ ace_version }}\n"
+        content: "Ace {{ ac }}\n"
         dest: "{{ ace_dir }}/.textbookimprover-ansible"
         mode: "0644"
-
-- name: Link ace-puppeteer where the shell finds it
-  ansible.builtin.file:
-    src: "{{ ace_dir }}/node_modules/@daisy/ace/bin/ace-puppeteer.js"
-    dest: "{{ ti_bin_dir }}/ace-puppeteer"
-    state: link

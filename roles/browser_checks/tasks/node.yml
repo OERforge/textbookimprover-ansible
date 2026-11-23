@@ -7,8 +7,8 @@
   when: not node_installed.stat.exists
   vars:
     work: "{{ ti_cache_dir }}/node-release"
-    tarball: node-v{{ node_version }}-linux-x64.tar.xz
-    signer: "{{ pins_node[node_version].signer }}"
+    tarball: node-v{{ nd }}-linux-x64.tar.xz
+    signer: "{{ pins_node[nd].signer }}"
   environment:
     # gpg's own folder, so that the user's keyring is never read or changed
     GNUPGHOME: "{{ ti_cache_dir }}/node-release/gnupg"
@@ -26,9 +26,9 @@
 
     - name: Download the tarball, refused unless its SHA-256 matches
       ansible.builtin.get_url:
-        url: "{{ node_release_url }}/v{{ node_version }}/{{ tarball }}"
+        url: "{{ node_release_url }}/v{{ nd }}/{{ tarball }}"
         dest: "{{ ti_cache_dir }}/{{ tarball }}"
-        checksum: "sha256:{{ pins_node[node_version].sha256 }}"
+        checksum: "sha256:{{ pins_node[nd].sha256 }}"
         mode: "0644"
       register: node_got
       until: node_got is not oerforge.textbookimprover.retryable
@@ -37,7 +37,7 @@
 
     - name: Download the release's checksums and their signature
       ansible.builtin.get_url:
-        url: "{{ node_release_url }}/v{{ node_version }}/{{ item }}"
+        url: "{{ node_release_url }}/v{{ nd }}/{{ item }}"
         dest: "{{ work }}/{{ item }}"
         mode: "0644"
       register: node_sums_got
@@ -81,7 +81,7 @@
 
     - name: Check that the signed checksum is the pinned one
       ansible.builtin.assert:
-        that: (pins_node[node_version].sha256 ~ '  ' ~ tarball) in (node_sums.content | b64decode).splitlines()
+        that: (pins_node[nd].sha256 ~ '  ' ~ tarball) in (node_sums.content | b64decode).splitlines()
         fail_msg: Node's signed SHASUMS256.txt doesn't give {{ tarball }} the pinned SHA-256.
         quiet: true
 
@@ -95,10 +95,3 @@
       ansible.builtin.file:
         path: "{{ work }}"
         state: absent
-
-- name: Link node, npm, and npx where the shell finds them
-  ansible.builtin.file:
-    src: "{{ node_dir }}/bin/{{ item }}"
-    dest: "{{ ti_bin_dir }}/{{ item }}"
-    state: link
-  loop: [node, npm, npx]

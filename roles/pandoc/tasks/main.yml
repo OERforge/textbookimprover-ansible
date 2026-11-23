@@ -4,9 +4,20 @@
   become_user: "{{ ti_user }}"
   vars:
     pins: "{{ (ti_pins.pandoc | default({})) | combine(pandoc_pins) }}"
+    # a list, a single version, or nothing ("" or [])
+    wanted: >-
+      {{ ([pandoc_versions] if pandoc_versions is string else (pandoc_versions | default([], true)))
+         | map('string') | select | list }}
   block:
     - name: Read the pinned checksums
       ansible.builtin.include_vars: pins.yml
+
+    - name: Note that no Pandoc is asked for
+      when: wanted | length == 0
+      ansible.builtin.set_fact:
+        ti_warnings: >-
+          {{ ti_warnings | default([]) + ['pandoc_versions is empty, so there is no Pandoc for
+          TextbookImprover, which needs one; any the play installed are removed.'] }}
 
     - name: Stop on a version with no pinned checksum
       ansible.builtin.assert:
@@ -15,7 +26,7 @@
           Pandoc {{ item }} has no SHA-256 here. Give one you trust in the
           inventory, as ti_pins: {pandoc: {"{{ item }}": <sha256>}}.
         quiet: true
-      loop: "{{ pandoc_versions }}"
+      loop: "{{ wanted }}"
 
     - name: Download each release, refused unless its SHA-256 matches
       ansible.builtin.get_url:
@@ -27,7 +38,7 @@
       until: pandoc_got is not oerforge.textbookimprover.retryable
       retries: "{{ ti_download_retries }}"
       delay: "{{ ti_download_delay }}"
-      loop: "{{ pandoc_versions }}"
+      loop: "{{ wanted }}"
 
     - name: Unpack each release into its own folder
       ansible.builtin.unarchive:
@@ -35,30 +46,33 @@
         dest: "{{ ti_opt_dir }}"
         remote_src: true
         creates: "{{ ti_opt_dir }}/pandoc-{{ item }}/bin/pandoc"
-      loop: "{{ pandoc_versions }}"
+      loop: "{{ wanted }}"
 
     - name: Link each as pandoc-<version>
       ansible.builtin.file:
         src: "{{ ti_opt_dir }}/pandoc-{{ item }}/bin/pandoc"
         dest: "{{ ti_bin_dir }}/pandoc-{{ item }}"
         state: link
-      loop: "{{ pandoc_versions }}"
+      loop: "{{ wanted }}"
 
     - name: Link the first as pandoc
+      when: wanted | length > 0
       ansible.builtin.file:
-        src: "{{ ti_opt_dir }}/pandoc-{{ pandoc_versions[0] }}/bin/pandoc"
+        src: "{{ ti_opt_dir }}/pandoc-{{ wanted[0] }}/bin/pandoc"
         dest: "{{ ti_bin_dir }}/pandoc"
         state: link
 
     - name: Ask the linked Pandoc its version
+      when: wanted | length > 0
       ansible.builtin.command:
         argv: ["{{ ti_bin_dir }}/pandoc", --version]
       register: ti_pandoc_version
       changed_when: false
 
     - name: Check that it's the version asked for
+      when: wanted | length > 0
       ansible.builtin.assert:
-        that: ti_pandoc_version.stdout_lines[0] == 'pandoc ' ~ pandoc_versions[0]
+        that: ti_pandoc_version.stdout_lines[0] == 'pandoc ' ~ wanted[0]
         fail_msg: "{{ ti_bin_dir }}/pandoc says {{ ti_pandoc_version.stdout_lines[0] }}"
         success_msg: "{{ ti_pandoc_version.stdout_lines[0] }}"
 
@@ -70,6 +84,6 @@
         old_versions_what: Pandoc
         old_versions_in: "{{ ti_opt_dir }}"
         old_versions_name: 'pandoc-[0-9][^/]*'
-        old_versions_keep: "{{ pandoc_versions | map('string') | map('regex_replace', '^', ti_opt_dir ~ '/pandoc-') | list }}"
+        old_versions_keep: "{{ wanted | map('regex_replace', '^', ti_opt_dir ~ '/pandoc-') | list }}"
         old_versions_cache: 'pandoc-[0-9][^/]*-linux-amd64\.tar\.gz'
-        old_versions_cache_keep: "{{ pandoc_versions | map('string') | map('regex_replace', '^(.*)$', 'pandoc-\\1-linux-amd64.tar.gz') | list }}"
+        old_versions_cache_keep: "{{ wanted | map('regex_replace', '^(.*)$', 'pandoc-\\1-linux-amd64.tar.gz') | list }}"

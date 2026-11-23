@@ -1,0 +1,7 @@
+# Which TeX the version settings name: tinytex, texlive, or '' for none.
+# Worked out here, not set: "" and nothing at all are both none.
+tex_tinytex_wanted: "{{ tinytex_version | default('', true) | string }}"
+tex_texlive_wanted: "{{ texlive_version | default('', true) | string }}"
+tex_kind: >-
+  {{ 'tinytex' if tex_tinytex_wanted | length > 0
+     else ('texlive' if tex_texlive_wanted | length > 0 else '') }}

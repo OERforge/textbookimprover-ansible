@@ -7,7 +7,7 @@
   when: not verapdf_installed.stat.exists
   vars:
     work: "{{ ti_cache_dir }}/verapdf-installer"
-    zip: verapdf-greenfield-{{ verapdf_version }}-installer.zip
+    zip: verapdf-greenfield-{{ vp }}-installer.zip
   environment:
     # gpg's own folder, so that the user's keyring is never read or changed
     GNUPGHOME: "{{ ti_cache_dir }}/verapdf-installer/gnupg"
@@ -25,9 +25,9 @@
 
     - name: Download the installer, refused unless its SHA-256 matches
       ansible.builtin.get_url:
-        url: "{{ verapdf_release_url }}/{{ verapdf_version.split('.')[:2] | join('.') }}/{{ zip }}"
+        url: "{{ verapdf_release_url }}/{{ vp.split('.')[:2] | join('.') }}/{{ zip }}"
         dest: "{{ ti_cache_dir }}/{{ zip }}"
-        checksum: "sha256:{{ pins_verapdf[verapdf_version] }}"
+        checksum: "sha256:{{ pins_verapdf[vp] }}"
         mode: "0644"
       register: verapdf_got
       until: verapdf_got is not oerforge.textbookimprover.retryable
@@ -36,7 +36,7 @@
 
     - name: Download its signature
       ansible.builtin.get_url:
-        url: "{{ verapdf_release_url }}/{{ verapdf_version.split('.')[:2] | join('.') }}/{{ zip }}.asc"
+        url: "{{ verapdf_release_url }}/{{ vp.split('.')[:2] | join('.') }}/{{ zip }}.asc"
         dest: "{{ work }}/{{ zip }}.asc"
         mode: "0644"
       register: verapdf_signature_got
@@ -84,7 +84,7 @@
           - java
           - -DINSTALL_PATH={{ verapdf_dir }}
           - -jar
-          - "{{ work }}/verapdf-greenfield-{{ verapdf_version }}/verapdf-izpack-installer-{{ verapdf_version }}.jar"
+          - "{{ work }}/verapdf-greenfield-{{ vp }}/verapdf-izpack-installer-{{ vp }}.jar"
           - -options-system
         creates: "{{ verapdf_dir }}/verapdf"
 
@@ -94,7 +94,7 @@
         state: absent
 
 - name: Install veraPDF's WCAG modules
-  when: verapdf_wcag | bool
+  when: wcag | bool
   block:
     - name: Make their folder
       ansible.builtin.file:
@@ -115,7 +115,7 @@
       until: verapdf_wcag_got is not oerforge.textbookimprover.retryable
       retries: "{{ [ti_download_retries | int, 6] | max }}"
       delay: "{{ [ti_download_delay | int, 20] | max }}"
-      loop: "{{ verapdf_wcag_files[verapdf_version] }}"
+      loop: "{{ verapdf_wcag_files[vp] }}"
       loop_control:
         label: "{{ item.name }}"
 
@@ -130,6 +130,6 @@
         state: absent
       loop: >-
         {{ verapdf_wcag_found.files | map(attribute='path')
-           | reject('in', verapdf_wcag_files[verapdf_version]
+           | reject('in', verapdf_wcag_files[vp]
                           | map(attribute='name') | map('regex_replace', '^', verapdf_wcag_dir ~ '/'))
            | list }}

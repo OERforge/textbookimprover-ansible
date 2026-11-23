@@ -6,10 +6,15 @@
 # Python 3.9, installed by uv, which checks each build against the SHA-256 in
 # its own table, and linked as python3.9 in ~/.local/bin, where the
 # portability suite looks for it. uv itself is kept in ~/.local/opt and not
-# put on PATH, so a uv of the person's own is left alone. False leaves it out.
+# put on PATH, so a uv of the person's own is left alone. False leaves it
+# out: with it off, both versions default to none, and what the collection
+# installed is removed; a version named here is installed either way, but
+# linked as python3.9 only with it on. uv_default_version is the
+# collection's, which util/update-pins.py sets.
 developer_python39: true
-developer_python39_version: "3.9.25"
-uv_version: "0.13.9"
+developer_python39_version: "{{ '3.9.25' if developer_python39 | bool else '' }}"
+uv_default_version: "0.13.9"
+uv_version: "{{ uv_default_version if developer_python39 | bool else '' }}"
 uv_release_url: https://github.com/astral-sh/uv/releases/download
 
 # openstax/cookbook at the commit TextbookImprover's CNX ports were made

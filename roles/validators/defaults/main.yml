@@ -4,18 +4,29 @@
 # veraPDF's installer against veraPDF's signature too. A version the
 # collection has no pin for needs its SHA-256 in the inventory, as
 # ti_pins.epubcheck, ti_pins.vnu, or ti_pins.verapdf.
-epubcheck_version: "5.4.0"
+#
+# With ti_validators on, each is the collection's release (the
+# *_default_version settings, which util/update-pins.py sets); with it off,
+# none, and what the collection installed is removed. A version set to ""
+# leaves that one out. One named here is installed either way, but only
+# with ti_validators on is TextbookImprover told where it is.
+epubcheck_default_version: "5.4.0"
+vnu_default_version: "26.11.20"
+verapdf_default_version: "1.30.4"
+epubcheck_version: "{{ epubcheck_default_version if ti_validators | bool else '' }}"
+vnu_version: "{{ vnu_default_version if ti_validators | bool else '' }}"
+verapdf_version: "{{ verapdf_default_version if ti_validators | bool else '' }}"
+
 epubcheck_release_url: https://github.com/w3c/epubcheck/releases/download
 
 # The Nu checker from npm's vnu-jar package, which keeps each version as one
 # file, where its GitHub release named latest is rebuilt in place.
-vnu_version: "26.11.20"
 vnu_registry_url: https://registry.npmjs.org/vnu-jar/-
 
-verapdf_version: "1.30.4"
 verapdf_release_url: https://software.verapdf.org/releases
 
 # veraPDF's WCAG modules, which --wcag uses for veraPDF's WCAG 2.2 checks:
 # about 5.5 MB of jars from Maven Central and two profiles, each pinned in
-# vars/pins.yml for this veraPDF version. False leaves them out.
+# vars/pins.yml for this veraPDF version, installed with it. False leaves
+# them out, and removes those the collection installed.
 verapdf_wcag: true
