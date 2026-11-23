@@ -137,6 +137,16 @@
             *) export PATH="{{ tex_bin }}:$PATH" ;;
           esac
 
+    # In a folder of its own, since LuaLaTeX leaves its log, texput.log,
+    # where it runs.
+    - name: Make a folder for asking LuaLaTeX
+      when: tex_kind | length > 0
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: textbookimprover-ansible-tex.
+      register: tex_ask
+      changed_when: false
+
     - name: Ask LuaLaTeX its LaTeX's release
       when: tex_kind | length > 0
       ansible.builtin.command:
@@ -144,9 +154,21 @@
           - "{{ tex_bin }}/lualatex"
           - -interaction=nonstopmode
           - '\message{TI-FORMAT=\fmtversion}\csname @@end\endcsname'
-        chdir: "{{ ti_cache_dir }}"
+        chdir: "{{ tex_ask.path }}"
       register: tex_format
       changed_when: false
+
+    - name: Take the folder away
+      when: tex_kind | length > 0
+      ansible.builtin.file:
+        path: "{{ tex_ask.path }}"
+        state: absent
+      changed_when: false
+
+    - name: Take away the log an earlier run left in the cache
+      ansible.builtin.file:
+        path: "{{ ti_cache_dir }}/texput.log"
+        state: absent
 
     - name: Check that it's recent enough for a PDF target
       when: tex_kind | length > 0
