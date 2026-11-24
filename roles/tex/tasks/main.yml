@@ -31,15 +31,6 @@
     # What tlmgr says when it won't read a repository older than the TeX
     tex_refused: seems to be older than the local installation
   block:
-    - name: Stop on tex_distribution, which the versions have replaced
-      ansible.builtin.assert:
-        that: tex_distribution is not defined
-        fail_msg: >-
-          tex_distribution is gone: the TeX is the one whose version is set,
-          tinytex_version (TinyTeX's release, as v2026.11) or texlive_version
-          (TeX Live's year, as 2026), with the other "".
-        quiet: true
-
     - name: Stop on two TeXs
       ansible.builtin.assert:
         that: tex_tinytex_wanted | length == 0 or tex_texlive_wanted | length == 0
