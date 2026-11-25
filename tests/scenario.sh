@@ -196,6 +196,43 @@ as_tester bash -ic 'echo "T=$T"; command -v pandoc; pandoc --version | head -1;
 # The suites under each Pandoc TI_TEST_PANDOCS names: one the play
 # installed, by a link named pandoc first on the PATH, or 3.9, the suites'
 # own stand-in for it (tests/pandoc39) over the play's newest Pandoc.
+# Why a Pandoc's suites failed, where a log kept only by the runner shows
+# it: run-all.sh's summary of the suites that failed and their FAIL and
+# ERROR lines, which it writes on stderr, and the last lines of each
+# failed suite's own output, where a traceback or a stopped run shows
+# though it has no FAIL line. A single suite's run (not "all") shows the
+# end of its output.
+show_why () {
+    local log="/tmp/suites-$1.log" err="/tmp/suites-$1.err" names
+    echo "--- why, with Pandoc $1"
+    if [ "$TI_TEST_SUITES" != all ]; then
+        tail -n 40 "$log"
+        tail -n 20 "$err"
+        return
+    fi
+    sed -n '/^[0-9]* suite(s) failed:/,$p' "$err" | head -n 60
+    names=$(sed -n 's/^[0-9]* suite(s) failed://p' "$err" | tail -n 1)
+    if [ -z "$names" ]; then
+        # run-all.sh stopped before its summary: the end of what it wrote.
+        tail -n 40 "$log"
+        tail -n 20 "$err"
+        return
+    fi
+    awk -v names="$names" '
+        BEGIN { n = split(names, list, " "); for (i = 1; i <= n; i++) want[list[i]] = 1 }
+        function flush() {
+            if (name in want) {
+                print "--- the end of " name "'"'"'s output"
+                start = count > 30 ? count - 29 : 1
+                for (i = start; i <= count; i++) print kept[i]
+            }
+            count = 0
+        }
+        /^=== / { flush(); name = $2; next }
+        name != "" { kept[++count] = $0 }
+        END { flush() }
+    ' "$log" | head -n 200
+}
 suites_failed=()
 skips_failed=()
 allowed_skips=${TI_TEST_SKIPS:-/collection/tests/skips/$playbook.txt}
@@ -222,9 +259,15 @@ if [ -n "${TI_TEST_SUITES:-}" ]; then
         if ! as_tester bash -ic "PATH=\"$front\$PATH\"; $command" \
                 > "/tmp/suites-$version.log" 2> "/tmp/suites-$version.err"; then
             suites_failed+=("$version")
+            failed=yes
+        else
+            failed=
         fi
         head -1 "/tmp/suites-$version.log"
         grep -E '^(FAIL|  FAIL)|All suites passed|passed$' "/tmp/suites-$version.log" | tail -4 || true
+        if [ -n "$failed" ]; then
+            show_why "$version"
+        fi
         if [ "$TI_TEST_SUITES" != all ]; then
             echo "skips: $(grep -c '^  skip' "/tmp/suites-$version.log"), not checked: not every suite ran"
         elif [ "$allowed_skips" = none ] || [ ! -f "$allowed_skips" ]; then
